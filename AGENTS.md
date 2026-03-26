@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This file is the contributor handoff guide for the Cloud-Based Workforce Task Management System repository. It explains how to work safely in this repo, where the important backend materials live, and what is already stable versus still in progress.
+This file is the contributor handoff guide for the Cloud-Based Workforce Task Management System repository. It explains how to work safely in this repo, where the important backend materials live, and what is already stable versus what is now optional future work.
 
 ## Repository Layout
 
@@ -27,10 +27,16 @@ Completed:
 - Phase 3: users and teams
 - Phase 4: tasks and assignment
 - Phase 5: dashboards
-
-Next:
-
 - Phase 6: hours logging
+- Phase 7: productivity metrics
+- Phase 8: goals and quotas
+- Phase 9: hardening and deployment
+
+Optional next work:
+
+- task comments and activity history
+- notifications and reminders
+- file attachments
 
 ## Backend Stack
 
@@ -52,12 +58,14 @@ All backend documentation lives in `backend/docs/`.
 - [DEVELOPMENT_ROADMAP.md](/Users/admin/Documents/GitHub/cloud-computing-project/backend/docs/DEVELOPMENT_ROADMAP.md)
 - [MODULE_PROGRESS.md](/Users/admin/Documents/GitHub/cloud-computing-project/backend/docs/MODULE_PROGRESS.md)
 - [DATABASE_SCHEMA.md](/Users/admin/Documents/GitHub/cloud-computing-project/backend/docs/DATABASE_SCHEMA.md)
+- [TESTING_STRATEGY.md](/Users/admin/Documents/GitHub/cloud-computing-project/backend/docs/TESTING_STRATEGY.md)
 - [AUTH_AND_RBAC.md](/Users/admin/Documents/GitHub/cloud-computing-project/backend/docs/AUTH_AND_RBAC.md)
 - [API_REFERENCE.md](/Users/admin/Documents/GitHub/cloud-computing-project/backend/docs/API_REFERENCE.md)
 - [FRONTEND_INTEGRATION_GUIDE.md](/Users/admin/Documents/GitHub/cloud-computing-project/backend/docs/FRONTEND_INTEGRATION_GUIDE.md)
 - [ERROR_HANDLING_CONVENTIONS.md](/Users/admin/Documents/GitHub/cloud-computing-project/backend/docs/ERROR_HANDLING_CONVENTIONS.md)
 - [API_EXAMPLES.md](/Users/admin/Documents/GitHub/cloud-computing-project/backend/docs/API_EXAMPLES.md)
 - [ENVIRONMENT_VARIABLES.md](/Users/admin/Documents/GitHub/cloud-computing-project/backend/docs/ENVIRONMENT_VARIABLES.md)
+- [DEPLOYMENT_GUIDE.md](/Users/admin/Documents/GitHub/cloud-computing-project/backend/docs/DEPLOYMENT_GUIDE.md)
 
 ## Backend Commands
 
@@ -81,10 +89,28 @@ Run tests:
 npm test
 ```
 
+Run a smoke check:
+
+```bash
+npm run smoke:local
+```
+
+Run the deeper live audit:
+
+```bash
+npm run audit:local
+```
+
 Seed demo auth users:
 
 ```bash
 npm run seed:demo-users
+```
+
+Seed the repeatable live demo group:
+
+```bash
+npm run seed:demo-group
 ```
 
 Check linked Supabase migrations:
@@ -124,6 +150,12 @@ supabase db push
 - `POST /api/v1/task-assignments`
 - `GET /api/v1/dashboards/employee`
 - `GET /api/v1/dashboards/manager`
+- `GET /api/v1/hours-logged`
+- `POST /api/v1/hours-logged`
+- `GET /api/v1/productivity-metrics`
+- `GET /api/v1/goals`
+- `POST /api/v1/goals`
+- `PATCH /api/v1/goals/:goalId`
 
 All responses use the standard success/error JSON envelope documented in the backend docs.
 
@@ -156,10 +188,9 @@ These demo accounts are expected to exist after running `npm run seed:demo-users
 
 ## Recommended Next Work
 
-Phase 6 should add:
+The planned roadmap is complete. If the team wants to extend the project, the best next features are:
 
-- hours logging endpoints
-- weekly and monthly hours summaries
-- employee-owned hours visibility with manager team-level reporting
-
-That phase extends reporting while preserving the stable MVP task and dashboard flows.
+- task comments and task activity history
+- file attachments
+- notification reminders for due and overdue tasks
+- export-ready manager reporting

@@ -14,8 +14,8 @@ Last updated: March 26, 2026
 | Phase 5 - MVP dashboards | Complete | `npm test` passed with dashboard coverage and live dashboard verification succeeded on March 26, 2026 | Frontend can now build employee and manager dashboard cards and charts | MVP backend scope is now demo-ready |
 | Phase 6 - Hours logging | Complete | `npm test` passed, `supabase db push` succeeded, and live hours logging verification succeeded on March 26, 2026 | Frontend can now build hours entry forms and team-scoped hours summaries | Hours create/list endpoints, summaries, and schema are in place |
 | Phase 7 - Productivity metrics | Complete | `npm test` passed and live productivity metrics verification succeeded on March 26, 2026 | Frontend can now build richer productivity rollups, trends, and team comparison charts | Weekly, monthly, and yearly rollups plus chart-ready trend data are in place |
-| Phase 8 - Goals and quotas | Planned | Not started | Goal and quota widgets become possible | Post-MVP module |
-| Phase 9 - Hardening + deployment | Planned | Not started | Stable deployed API base URL for frontend handoff | Final polish and deployment |
+| Phase 8 - Goals and quotas | Complete | `npm test` passed, `supabase db push` succeeded, and live goals verification succeeded on March 26, 2026 | Frontend can now build quota progress cards, goal lists, and manager goal-management forms | Generic goals schema and sales quota support are in place |
+| Phase 9 - Hardening + deployment | Complete | `npm test` passed, smoke verification succeeded, and deployment artifacts were added on March 26, 2026 | Frontend can now receive a deployment-ready backend handoff with a stable Render setup path | Smoke script, deployment guide, and Render Blueprint are in place |
 
 ## Current Stable Backend Contracts
 
@@ -38,6 +38,9 @@ These items are safe for the frontend team to build against now:
 - hours logged list endpoint: `GET /api/v1/hours-logged`
 - hours logged create endpoint: `POST /api/v1/hours-logged`
 - productivity metrics endpoint: `GET /api/v1/productivity-metrics`
+- goals endpoint: `GET /api/v1/goals`
+- goal create endpoint: `POST /api/v1/goals`
+- goal update endpoint: `PATCH /api/v1/goals/:goalId`
 - success envelope:
 
 ```json
@@ -63,9 +66,9 @@ These items are safe for the frontend team to build against now:
 }
 ```
 
-## Phase 0, Phase 1, Phase 2, Phase 3, Phase 4, Phase 5, Phase 6, and Phase 7 Acceptance Snapshot
+## Phase 0, Phase 1, Phase 2, Phase 3, Phase 4, Phase 5, Phase 6, Phase 7, Phase 8, and Phase 9 Acceptance Snapshot
 
-Phases 0, 1, 2, 3, 4, 5, 6, and 7 are complete because:
+Phases 0, 1, 2, 3, 4, 5, 6, 7, 8, and 9 are complete because:
 
 - backend service structure exists in `/backend`
 - required docs were created and aligned with implementation
@@ -100,11 +103,22 @@ Phases 0, 1, 2, 3, 4, 5, 6, and 7 are complete because:
 - productivity responses include chart-ready weekly and monthly trends
 - team productivity responses include a monthly per-member breakdown for comparison views
 - employee, manager, and manager-selected-user scope rules are enforced through the service layer
+- `goals` schema exists in both `sql/` and Supabase migration form
+- `/goals` list, create, and update endpoints are implemented and covered by tests
+- sales quota support ships as the first goal type on a generic goals model
+- employee goal visibility is limited to team goals and user goals assigned to that employee
+- manager goal writes are limited to teams they manage
+- goal responses include computed progress percentage, remaining value, excess value, and target-met state
+- `render.yaml` exists at the repo root for repeatable Render deployment from the monorepo
+- `backend/scripts/smoke-test.js` exists for local and deployed smoke verification
+- `TESTING_STRATEGY.md` and `DEPLOYMENT_GUIDE.md` are now part of the handoff docs
+- the current regression suite passed with `106/106` tests on March 26, 2026
 
 ## Next Recommended Phase
 
-Phase 8 should begin next:
+The planned roadmap is complete. Recommended optional next work:
 
-- add the goals and quotas schema with sales quota support first
-- calculate goal progress percentages and manager-controlled assignment flows
-- expose stable goal endpoints without destabilizing the existing task, hours, and productivity APIs
+- task comments and activity history
+- reminder notifications
+- attachments
+- export-ready reporting

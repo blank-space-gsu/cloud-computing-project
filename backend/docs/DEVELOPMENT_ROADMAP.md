@@ -14,9 +14,11 @@ The backend is developed in phases so each milestone is planned, implemented, te
 - Phase 5 is complete.
 - Phase 6 is complete.
 - Phase 7 is complete.
+- Phase 8 is complete.
+- Phase 9 is complete.
 - The MVP schema migration has been applied to the linked Supabase project.
 - Demo auth users exist for manual testing.
-- Phase 8 is the next implementation target.
+- The planned backend roadmap is complete.
 
 ### MVP Boundary
 
@@ -410,6 +412,9 @@ Implement measurable goals with sales quota support as the first goal type.
 **Exit criteria**
 - goal tracking is consistent with the rest of the API
 
+**Completion note**
+- completed with a generic `goals` schema, sales quota support as the first goal type, manager-controlled goal creation and updates, computed progress percentages, and employee-visible team plus personal goals
+
 ## Phase 9 - Hardening, QA, and Deployment
 
 **Goal**
@@ -446,3 +451,15 @@ Prepare the backend for a reliable demo and student handoff.
 
 **Exit criteria**
 - backend is deployable, documented, and presentation-ready
+
+**Completion note**
+- completed with the final regression pass, reusable smoke-check script, Render deployment Blueprint, deployment guide, testing strategy guide, and final handoff documentation alignment
+
+## Post-Roadmap Backlog
+
+The planned course-project roadmap is complete. If the team wants to keep extending the system, the best next items are:
+
+- task comments and activity history
+- file attachments
+- notifications and reminders
+- export-ready manager reports

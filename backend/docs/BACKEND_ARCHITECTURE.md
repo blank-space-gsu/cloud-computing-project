@@ -10,7 +10,7 @@
 | Authentication | Supabase Auth through backend endpoints | Keeps frontend integration simple while using a strong managed auth provider |
 | Validation | Zod | Clear request validation rules with readable error structures |
 | Testing | Vitest + Supertest | Fast setup for API tests without extra complexity |
-| Deployment | Render | Easy Node service deployment and simple environment variable management for student teams |
+| Deployment | Render | Easy Node service deployment, monorepo support, and simple environment variable management for student teams |
 
 ## Architecture Summary
 
@@ -25,7 +25,7 @@ The backend uses a layered structure to keep responsibilities separated:
 
 ## Current Implementation Status
 
-Phase 0, Phase 1, Phase 2, Phase 3, Phase 4, Phase 5, Phase 6, and Phase 7 are complete:
+Phase 0, Phase 1, Phase 2, Phase 3, Phase 4, Phase 5, Phase 6, Phase 7, Phase 8, and Phase 9 are complete:
 
 - Express application foundation is in place
 - centralized success and error response conventions are stable
@@ -48,6 +48,10 @@ Phase 0, Phase 1, Phase 2, Phase 3, Phase 4, Phase 5, Phase 6, and Phase 7 are c
 - hours logging scope and summary logic are implemented in `src/services/hoursLogged.service.js` and `src/repositories/hoursLogged.repository.js`
 - productivity metrics route is implemented in `src/routes/productivity.routes.js`
 - productivity rollups and trend aggregation are implemented in `src/services/productivity.service.js` and `src/repositories/productivity.repository.js`
+- goals routes are implemented in `src/routes/goals.routes.js`
+- goal scope, quota progress, and summary logic are implemented in `src/services/goal.service.js` and `src/repositories/goal.repository.js`
+- reusable smoke verification is implemented in `scripts/smoke-test.js`
+- a Render deployment Blueprint is included at the repo root in `render.yaml`
 
 ## Request Flow
 
@@ -86,7 +90,9 @@ This keeps HTTP concerns out of business logic and keeps database queries out of
 - managers can view hours logged for teams they manage
 - employees can access only their own productivity metrics
 - managers can access team productivity metrics and individual productivity metrics for users in manageable teams
-- the current implementation includes `POST /auth/login`, `GET /auth/me`, `GET /users/me`, `GET /teams`, `GET /teams/:teamId`, `GET /teams/:teamId/members`, `GET /tasks`, `POST /tasks`, `GET /tasks/:taskId`, `PATCH /tasks/:taskId`, `DELETE /tasks/:taskId`, `POST /task-assignments`, `GET /dashboards/employee`, `GET /dashboards/manager`, `GET /hours-logged`, `POST /hours-logged`, `GET /productivity-metrics`, and a manager-only RBAC smoke-check route
+- employees can view team-scoped goals for their teams and user-scoped goals assigned to them
+- managers can create and update team-scoped or employee-scoped goals for teams they manage
+- the current implementation includes `POST /auth/login`, `GET /auth/me`, `GET /users/me`, `GET /teams`, `GET /teams/:teamId`, `GET /teams/:teamId/members`, `GET /tasks`, `POST /tasks`, `GET /tasks/:taskId`, `PATCH /tasks/:taskId`, `DELETE /tasks/:taskId`, `POST /task-assignments`, `GET /dashboards/employee`, `GET /dashboards/manager`, `GET /hours-logged`, `POST /hours-logged`, `GET /productivity-metrics`, `GET /goals`, `POST /goals`, `PATCH /goals/:goalId`, and a manager-only RBAC smoke-check route
 
 ### Data Model Direction
 
@@ -99,15 +105,19 @@ MVP tables implemented in Phase 1:
 - `task_assignments`
 - enum types for role, task status, and task priority
 
-Planned post-MVP modules:
+Optional post-roadmap enhancements:
 
-- `goals` with `sales_quota` as the first goal type
+- task comments and activity history
+- file attachments
+- reminder notifications
+- export-ready reporting
 
 ### Deployment Choice
 
 Render is the default deployment target because it is simple for a student team:
 
 - fast Node service setup
+- root-level Blueprint support for monorepos
 - built-in environment variable management
 - straightforward deploy logs
 - enough capability for a course project without extra infrastructure overhead
@@ -174,7 +184,7 @@ backend/
 }
 ```
 
-## Phase 0, Phase 1, Phase 2, Phase 3, Phase 4, Phase 5, Phase 6, and Phase 7 Verification
+## Phase 0, Phase 1, Phase 2, Phase 3, Phase 4, Phase 5, Phase 6, Phase 7, Phase 8, and Phase 9 Verification
 
 The current backend foundation has been verified with:
 
@@ -209,6 +219,13 @@ The current backend foundation has been verified with:
 - productivity route integration tests
 - productivity service unit tests
 - live verification of team and individual productivity rollups, scope enforcement, and cleanup
+- goals route integration tests
+- goal service unit tests
+- goal progress utility tests
+- successful Supabase migration push for the goals schema
+- live verification of user-scoped goals, team-scoped goals, quota progress, manager-only writes, and cleanup
+- deployment-oriented smoke script verification
+- root-level Render Blueprint committed for repeatable deployment setup
 
 ## Current Frontend-Facing Notes
 
@@ -234,6 +251,10 @@ The frontend team can rely on these contracts right now:
 - hours logged list endpoint is `GET /api/v1/hours-logged`
 - hours logged create endpoint is `POST /api/v1/hours-logged`
 - productivity metrics endpoint is `GET /api/v1/productivity-metrics`
+- goals endpoint is `GET /api/v1/goals`
+- goal create endpoint is `POST /api/v1/goals`
+- goal update endpoint is `PATCH /api/v1/goals/:goalId`
+- the planned backend roadmap is complete and ready for deployment handoff
 - all future endpoints will follow the same top-level success and error envelope
 - unknown routes already return structured JSON errors instead of raw HTML
 

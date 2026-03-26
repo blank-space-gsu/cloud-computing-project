@@ -25,12 +25,14 @@ The first implementation focuses on the smallest useful product:
 - manager dashboard summaries for workload and completion
 - team-based access boundaries
 
-## Planned Expansion After MVP
+## Optional Next Enhancements
 
-These modules are intentionally planned now so the architecture stays clean, but they are implemented after the MVP is stable:
+The planned roadmap is now complete. If the team wants to extend the project after the current delivery baseline, these are sensible next additions:
 
-- measurable goals and quotas, with sales quota support first
-- deployment hardening and demo polish
+- task comments and update history
+- file attachments
+- reminder notifications
+- export-ready reporting
 
 ## Backend Goals
 
@@ -43,7 +45,7 @@ These modules are intentionally planned now so the architecture stays clean, but
 
 ## Current Delivery Status
 
-As of March 26, 2026, the backend has completed Phase 0, Phase 1, Phase 2, Phase 3, Phase 4, Phase 5, Phase 6, and Phase 7:
+As of March 26, 2026, the backend has completed Phase 0, Phase 1, Phase 2, Phase 3, Phase 4, Phase 5, Phase 6, Phase 7, Phase 8, and Phase 9:
 
 - backend project structure created in `/backend`
 - Express application bootstrapped
@@ -69,6 +71,11 @@ As of March 26, 2026, the backend has completed Phase 0, Phase 1, Phase 2, Phase
 - hours logging endpoints implemented with weekly and monthly totals
 - productivity metrics endpoint implemented with weekly, monthly, and yearly rollups
 - employee, manager-team, and manager-selected-user productivity views implemented
+- goals and sales quota tracking endpoints implemented with computed progress percentages
+- user-scoped and team-scoped goals are enforced through manager-controlled write flows
+- reusable smoke-test script implemented for local and deployed verification
+- Render Blueprint configuration added for monorepo deployment
+- deployment and testing documentation published for final handoff
 - roadmap, architecture, schema, and environment docs published
 
 ## Success Criteria
@@ -79,3 +86,4 @@ This backend is successful if it is:
 - clean enough to explain during a cloud computing presentation
 - incremental enough for a student team to build confidently
 - documented well enough that new teammates can onboard quickly
+- deployable and smoke-checkable with a student-friendly workflow

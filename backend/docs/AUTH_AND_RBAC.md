@@ -74,6 +74,7 @@ Phase 2 uses Supabase Auth as the identity provider, but the frontend talks to b
 Phase 2 adds an auth profile sync trigger:
 
 - when a user is created in `auth.users`, a matching row is inserted into `public.users`
+- when a user email or auth metadata changes later, the matching `public.users` row is updated too
 - first name, last name, job title, and app role can be seeded from user metadata
 
 This keeps auth identity and application profile data aligned.

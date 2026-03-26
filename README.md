@@ -13,10 +13,12 @@ The application helps managers assign and monitor work while giving employees a 
 - Employees can view their assigned tasks and update task status.
 - Teams, due dates, priorities, and weekly task organization are supported.
 
-### Planned After MVP
+### Optional Next Enhancements
 
-- Goal and quota tracking
-- Deployment hardening and final presentation polish
+- task comments and activity history
+- file attachments
+- notifications and reminders
+- export-ready reporting
 
 ## Repository Layout
 
@@ -38,7 +40,7 @@ cloud-computing-project/
 
 ## Current Backend Status
 
-Phases 0, 1, 2, 3, 4, 5, 6, and 7 are implemented in `/backend`:
+Phases 0, 1, 2, 3, 4, 5, 6, 7, 8, and 9 are implemented in `/backend`:
 
 - Express app bootstrap
 - `GET /api/v1/health`
@@ -57,6 +59,9 @@ Phases 0, 1, 2, 3, 4, 5, 6, and 7 are implemented in `/backend`:
 - manager dashboard summary endpoint
 - hours logging create and list endpoints
 - productivity metrics summary endpoint
+- goals and quota tracking endpoints
+- reusable smoke-check script
+- Render deployment blueprint
 - Demo auth user seed script for manual QA
 - Phase roadmap and architecture documentation
 
@@ -75,6 +80,13 @@ cd backend
 npm test
 ```
 
+Seed a repeatable live demo dataset:
+
+```bash
+cd backend
+npm run seed:demo-group
+```
+
 ## Key Backend Docs
 
 - [Project overview](backend/docs/PROJECT_OVERVIEW.md)
@@ -83,10 +95,13 @@ npm test
 - [Module progress board](backend/docs/MODULE_PROGRESS.md)
 - [Database schema](backend/docs/DATABASE_SCHEMA.md)
 - [Environment variables](backend/docs/ENVIRONMENT_VARIABLES.md)
+- [Testing strategy](backend/docs/TESTING_STRATEGY.md)
 - [Auth and RBAC](backend/docs/AUTH_AND_RBAC.md)
 - [API reference](backend/docs/API_REFERENCE.md)
+- [API examples](backend/docs/API_EXAMPLES.md)
 - [Frontend integration guide](backend/docs/FRONTEND_INTEGRATION_GUIDE.md)
 - [Error handling conventions](backend/docs/ERROR_HANDLING_CONVENTIONS.md)
+- [Deployment guide](backend/docs/DEPLOYMENT_GUIDE.md)
 
 ## Frontend Team Notes
 
@@ -113,5 +128,8 @@ The backend currently guarantees:
 - Hours logged list endpoint: `GET /api/v1/hours-logged`
 - Hours logged create endpoint: `POST /api/v1/hours-logged`
 - Productivity metrics endpoint: `GET /api/v1/productivity-metrics`
+- Goals endpoint: `GET /api/v1/goals`
+- Goal create endpoint: `POST /api/v1/goals`
+- Goal update endpoint: `PATCH /api/v1/goals/:goalId`
 
-Future backend modules will continue using the same response conventions so the frontend team can build fetch helpers early and reuse them across features.
+The planned backend roadmap is now complete. Future enhancements can continue using the same response conventions so the frontend team can keep reusing one shared `fetch()` helper.

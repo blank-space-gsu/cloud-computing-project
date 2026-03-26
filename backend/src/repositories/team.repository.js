@@ -21,6 +21,18 @@ const mapTeamMember = (row) => ({
   membershipRole: row.membership_role
 });
 
+const mapTeamMemberUser = (row) => ({
+  id: row.id,
+  email: row.email,
+  firstName: row.first_name,
+  lastName: row.last_name,
+  fullName: `${row.first_name} ${row.last_name}`.trim(),
+  jobTitle: row.job_title,
+  appRole: row.app_role,
+  isActive: row.is_active,
+  membershipRole: row.membership_role
+});
+
 export const upsertTeam = async (
   team,
   { pool = getPool() } = {}
@@ -162,6 +174,33 @@ export const listMembersForAccessibleTeam = async (
   );
 
   return result.rows.map(mapTeamMember);
+};
+
+export const findTeamMemberUserById = async (
+  { teamId, userId },
+  { pool = getPool() } = {}
+) => {
+  const result = await pool.query(
+    `
+      select
+        u.id,
+        u.email,
+        u.first_name,
+        u.last_name,
+        u.job_title,
+        u.app_role,
+        u.is_active,
+        tm.membership_role
+      from public.team_members tm
+      inner join public.users u
+        on u.id = tm.user_id
+      where tm.team_id = $1
+        and u.id = $2
+    `,
+    [teamId, userId]
+  );
+
+  return result.rows[0] ? mapTeamMemberUser(result.rows[0]) : null;
 };
 
 export const upsertTeamMember = async (

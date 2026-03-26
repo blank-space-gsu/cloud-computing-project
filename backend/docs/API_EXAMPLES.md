@@ -137,6 +137,45 @@ curl "http://localhost:4000/api/v1/productivity-metrics?scope=individual&userId=
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
 ```
 
+## Goals List Example
+
+```bash
+curl "http://localhost:4000/api/v1/goals?teamId=YOUR_TEAM_ID&sortBy=endDate&sortOrder=asc" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+## Create Goal Example
+
+```bash
+curl -X POST http://localhost:4000/api/v1/goals \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -d '{
+    "teamId": "YOUR_TEAM_ID",
+    "targetUserId": "EMPLOYEE_USER_ID",
+    "title": "March sales quota",
+    "scope": "user",
+    "goalType": "sales_quota",
+    "period": "monthly",
+    "startDate": "2026-03-01",
+    "endDate": "2026-03-31",
+    "targetValue": 15000,
+    "actualValue": 6000,
+    "unit": "USD"
+  }'
+```
+
+## Update Goal Example
+
+```bash
+curl -X PATCH http://localhost:4000/api/v1/goals/YOUR_GOAL_ID \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -d '{
+    "actualValue": 15000
+  }'
+```
+
 ## Manager Access Check Example
 
 ```bash

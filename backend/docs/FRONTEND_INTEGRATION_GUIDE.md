@@ -19,11 +19,12 @@ Stable today:
 - hours logging forms
 - hours summary widgets
 - productivity summary cards and trend charts
+- goals and quota progress widgets
 - global loading and error handling based on the shared response envelope
 
 Still in progress:
 
-- goals and quota features
+- no blocking backend gaps remain in the planned roadmap
 
 ## Base API Settings
 
@@ -54,6 +55,9 @@ Still in progress:
 | `GET` | `/api/v1/hours-logged` | Yes | Load scoped hours entries plus weekly/monthly totals |
 | `POST` | `/api/v1/hours-logged` | Yes | Create a new hours log entry for the authenticated user |
 | `GET` | `/api/v1/productivity-metrics` | Yes | Load role-aware productivity rollups and trend data |
+| `GET` | `/api/v1/goals` | Yes | Load visible goals plus quota summary metadata |
+| `POST` | `/api/v1/goals` | Yes | Manager/admin goal creation endpoint |
+| `PATCH` | `/api/v1/goals/:goalId` | Yes | Manager/admin goal update endpoint |
 
 ## Login Flow
 
@@ -293,6 +297,71 @@ const response = await fetch(
 const result = await response.json();
 ```
 
+### Goals List
+
+```js
+const accessToken = localStorage.getItem("accessToken");
+
+const response = await fetch(
+  "http://localhost:4000/api/v1/goals?teamId=YOUR_TEAM_ID&sortBy=endDate&sortOrder=asc",
+  {
+    headers: {
+      Authorization: `Bearer ${accessToken}`
+    }
+  }
+);
+
+const result = await response.json();
+```
+
+### Create Goal
+
+```js
+const accessToken = localStorage.getItem("accessToken");
+
+const response = await fetch("http://localhost:4000/api/v1/goals", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${accessToken}`
+  },
+  body: JSON.stringify({
+    teamId: "YOUR_TEAM_ID",
+    targetUserId: "EMPLOYEE_USER_ID",
+    title: "March sales quota",
+    scope: "user",
+    goalType: "sales_quota",
+    period: "monthly",
+    startDate: "2026-03-01",
+    endDate: "2026-03-31",
+    targetValue: 15000,
+    actualValue: 6000,
+    unit: "USD"
+  })
+});
+
+const result = await response.json();
+```
+
+### Update Goal
+
+```js
+const accessToken = localStorage.getItem("accessToken");
+
+const response = await fetch("http://localhost:4000/api/v1/goals/YOUR_GOAL_ID", {
+  method: "PATCH",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${accessToken}`
+  },
+  body: JSON.stringify({
+    actualValue: 15000
+  })
+});
+
+const result = await response.json();
+```
+
 ## Error Handling Expectations
 
 - if `success` is `false`, read `error.code` and `error.message`
@@ -306,6 +375,9 @@ const result = await response.json();
 - show an employee-dashboard role message when `error.code === "EMPLOYEE_DASHBOARD_FORBIDDEN"`
 - show a productivity-scope role message when `error.code === "PRODUCTIVITY_SCOPE_FORBIDDEN"`
 - show a user-missing state when `error.code === "USER_NOT_FOUND"`
+- show a goal-not-found state when `error.code === "GOAL_NOT_FOUND"`
+- show a goal target-role message when `error.code === "INVALID_GOAL_TARGET_ROLE"`
+- show a goal configuration message when `error.code === "INVALID_GOAL_CONFIGURATION"`
 - show a setup/configuration message when `error.code` starts with `AUTH_CONFIGURATION`
 
 ## Empty and Loading States
@@ -317,6 +389,7 @@ const result = await response.json();
 - show an empty team task state if a manager filter returns no tasks
 - show an empty hours state if `/hours-logged` returns `data.hoursLogs = []`
 - show an empty productivity state if `/productivity-metrics` returns zero counts across the rollups
+- show an empty goals state if `/goals` returns `data.goals = []`
 - show an unassigned badge if `task.assignment` is `null`
 
 ## Manager vs Employee UI Guidance
@@ -330,6 +403,8 @@ const result = await response.json();
 - managers can use `/hours-logged?teamId=...` to build team time-report summaries
 - employees should call `/productivity-metrics` without a `userId`; the backend automatically scopes metrics to the logged-in employee
 - managers can use `/productivity-metrics?scope=team&teamId=...` for team rollups and `/productivity-metrics?scope=individual&userId=...` for employee detail panels
+- employees can call `/goals` directly; the backend will return their team goals plus user-scoped goals assigned to them
+- managers can use `/goals?teamId=...` for team quota views and `/goals?teamId=...&userId=...&scope=user` for employee quota detail
 
 ## Sorting and Rendering Guidance
 
@@ -340,6 +415,7 @@ const result = await response.json();
 - use priority badges consistently: `low`, `medium`, `high`, `urgent`
 - render assignment state from `task.assignment`; if it is `null`, show the task as unassigned
 - use `meta.total`, `meta.page`, and `meta.limit` from `/tasks` for pagination controls
+- render goal progress from `goal.progressPercent`, `goal.remainingValue`, and `goal.isTargetMet`
 
 ## Dashboard Rendering Guidance
 
@@ -349,6 +425,16 @@ const result = await response.json();
 - use `data.tasks.upcomingDeadlines` for deadline widgets
 - use `data.tasks.urgentTasks` for urgent attention lists
 - when a dashboard array is empty, render a zero-state instead of hiding the section entirely
+
+## Goals Rendering Guidance
+
+- use `data.summary.totalTargetValue` and `data.summary.totalActualValue` for top-line quota cards only when `data.summary.hasMixedUnits === false`
+- when `data.summary.hasMixedUnits === true`, render grouped cards from `data.summary.totalsByUnit` instead of one combined total
+- use `data.summary.primaryUnit` to label single-unit goal summaries
+- use each goal's `progressPercent` and `isTargetMet` to render progress bars and completion badges
+- use `data.charts.byStatus`, `data.charts.byPeriod`, and `data.charts.byScope` for simple bar or donut charts
+- team-scoped goals have `targetUser = null`; render them as shared team goals
+- user-scoped goals include `targetUser.fullName` and can be grouped under employee detail panels
 
 ## Stable vs In-Progress Backend Modules
 
@@ -364,7 +450,10 @@ const result = await response.json();
 - employee and manager dashboard endpoints
 - hours logging create/list endpoints
 - productivity metrics endpoint
+- goals endpoints
 
-### In Progress
+### Optional Next Enhancements
 
-- goal modules
+- task comments and activity history
+- notifications and reminders
+- export-ready reporting

@@ -64,6 +64,27 @@ This avoids conflicting stored values.
 - `high`
 - `urgent`
 
+### `public.goal_type`
+
+- `sales_quota`
+
+### `public.goal_scope`
+
+- `user`
+- `team`
+
+### `public.goal_period`
+
+- `weekly`
+- `monthly`
+- `quarterly`
+- `yearly`
+
+### `public.goal_status`
+
+- `active`
+- `cancelled`
+
 ## Tables
 
 ### `public.users`
@@ -295,21 +316,77 @@ Stores self-reported work hours for a user, optionally linked to a task.
 - composite index on (`task_id`, `work_date desc`)
 - composite index on (`created_by_user_id`, `created_at desc`)
 
-Still planned after Phase 7:
+### `public.goals`
 
-- `goals`
+**Purpose**
+Stores measurable goals and quotas. Phase 8 uses this table for sales quotas with either user or team scope.
+
+| Column | Type | Null | Default | Notes |
+| --- | --- | --- | --- | --- |
+| `id` | `uuid` | No | `extensions.gen_random_uuid()` | Primary key |
+| `team_id` | `uuid` | No | none | Team that owns the goal |
+| `target_user_id` | `uuid` | Yes | `null` | Required for user-scoped goals, null for team-scoped goals |
+| `title` | `text` | No | none | Goal or quota title |
+| `description` | `text` | Yes | `null` | Optional supporting description |
+| `goal_type` | `public.goal_type` | No | `'sales_quota'` | Generic goal category |
+| `scope` | `public.goal_scope` | No | `'user'` | Whether the goal targets one user or a whole team |
+| `period` | `public.goal_period` | No | `'monthly'` | Reporting period label |
+| `start_date` | `date` | No | none | Goal tracking start date |
+| `end_date` | `date` | No | none | Goal tracking end date |
+| `target_value` | `numeric(12,2)` | No | none | The quota or goal target |
+| `actual_value` | `numeric(12,2)` | No | `0` | The currently achieved amount |
+| `unit` | `text` | No | `'USD'` | Frontend label for the target, for example `USD` or `deals` |
+| `status` | `public.goal_status` | No | `'active'` | Goal lifecycle state |
+| `created_by_user_id` | `uuid` | No | none | Manager or admin who created the goal |
+| `updated_by_user_id` | `uuid` | Yes | `null` | Last updater |
+| `created_at` | `timestamptz` | No | `timezone('utc', now())` | Audit timestamp |
+| `updated_at` | `timestamptz` | No | `timezone('utc', now())` | Audit timestamp |
+
+**Primary key**
+- `id`
+
+**Foreign keys**
+- `team_id -> teams(id)` on delete restrict
+- `target_user_id -> users(id)` on delete restrict
+- `created_by_user_id -> users(id)` on delete restrict
+- `updated_by_user_id -> users(id)` on delete set null
+
+**Unique constraints**
+- none
+
+**Check constraints**
+- `char_length(trim(title)) > 0`
+- `char_length(trim(unit)) > 0`
+- `start_date <= end_date`
+- `target_value > 0`
+- `actual_value >= 0`
+- `(scope = 'team' and target_user_id is null) or (scope = 'user' and target_user_id is not null)`
+
+**Recommended indexes**
+- index on `team_id`
+- index on `target_user_id`
+- index on `goal_type`
+- index on `status`
+- index on `period`
+- index on `end_date`
+- composite index on (`team_id`, `end_date`)
+- composite index on (`target_user_id`, `status`)
+
+Still planned after Phase 8:
+
 - optional task comments or updates
+- deployment-focused operational support if needed later
 
-Productivity reporting in Phase 7 is computed directly from `tasks`, `task_assignments`, and `hours_logged`, so no separate summary tables were introduced yet.
+Productivity reporting in Phase 7 is computed directly from `tasks`, `task_assignments`, and `hours_logged`, and goal progress in Phase 8 is computed directly from `goals`, so no separate summary tables were introduced yet.
 
 ## Phase 2 Additions
 
 Phase 2 adds auth-profile synchronization through a separate migration:
 
 - trigger function: `public.handle_auth_user_profile_sync()`
-- trigger: `on_auth_user_created` on `auth.users`
+- triggers: `on_auth_user_created` and `on_auth_user_updated` on `auth.users`
 
-This lets backend-managed or admin-created Supabase auth users receive matching rows in `public.users` using metadata for:
+This lets backend-managed or admin-created Supabase auth users keep matching rows in `public.users` aligned using metadata for:
 
 - `first_name`
 - `last_name`

@@ -684,3 +684,127 @@ Bearer token required.
 - `403 PRODUCTIVITY_SCOPE_FORBIDDEN`
 - `404 TEAM_NOT_FOUND`
 - `404 USER_NOT_FOUND`
+
+## Goals
+
+### `GET /api/v1/goals`
+
+**Purpose**
+Returns goal and quota records visible to the authenticated user plus summary metadata for the current filter.
+
+**Auth**
+Bearer token required.
+
+**Scope rules**
+
+- employees receive team-scoped goals for their teams plus user-scoped goals assigned to them
+- managers receive goals for teams they manage
+- admins receive all goals
+
+**Query params**
+
+- `page`
+- `limit`
+- `teamId`
+- `userId`
+- `goalType`
+- `scope`
+- `period`
+- `status`
+- `includeCancelled`
+- `sortBy` with `endDate`, `createdAt`, `progressPercent`, `targetValue`, or `title`
+- `sortOrder` with `asc` or `desc`
+
+**Response notes**
+
+- `data.summary` includes total counts and unit-aware totals
+- `data.summary.totalTargetValue` and `data.summary.totalActualValue` are numeric only when all returned goals share the same unit
+- `data.summary.hasMixedUnits` becomes `true` when the filtered result mixes units such as `USD` and `tasks`
+- `data.summary.totalsByUnit` provides grouped totals when mixed units are present
+- `data.charts.byStatus`, `data.charts.byType`, `data.charts.byPeriod`, and `data.charts.byScope` are chart-ready
+- each goal includes computed `progressPercent`, `isTargetMet`, `remainingValue`, and `excessValue`
+- `data.availableTeams` provides valid frontend filter options
+
+**Error codes**
+
+- `400 VALIDATION_ERROR`
+- `401 UNAUTHORIZED`
+- `404 TEAM_NOT_FOUND`
+- `404 USER_NOT_FOUND`
+
+### `POST /api/v1/goals`
+
+**Purpose**
+Creates a new team-scoped or user-scoped goal.
+
+**Auth**
+Bearer token required, role must be `manager` or `admin`.
+
+**Request body**
+
+```json
+{
+  "teamId": "uuid",
+  "targetUserId": "uuid",
+  "title": "March sales quota",
+  "description": "Close the monthly target.",
+  "goalType": "sales_quota",
+  "scope": "user",
+  "period": "monthly",
+  "startDate": "2026-03-01",
+  "endDate": "2026-03-31",
+  "targetValue": 15000,
+  "actualValue": 6000,
+  "unit": "USD",
+  "status": "active"
+}
+```
+
+**Validation**
+
+- `teamId` must be a valid UUID
+- `targetUserId` is required for `user` scope and must be omitted for `team` scope
+- `goalType` currently supports `sales_quota`
+- `period` must be one of `weekly`, `monthly`, `quarterly`, or `yearly`
+- `startDate` and `endDate` must be real ISO dates with `startDate <= endDate`
+- `targetValue` must be greater than `0`
+- `actualValue` must be `0` or greater
+- `unit` must be a non-empty label such as `USD` or `deals`
+
+**Error codes**
+
+- `400 VALIDATION_ERROR`
+- `400 INVALID_GOAL_TARGET_ROLE`
+- `400 INVALID_GOAL_CONFIGURATION`
+- `401 UNAUTHORIZED`
+- `403 FORBIDDEN`
+- `403 GOAL_CREATION_FORBIDDEN`
+- `403 TEAM_MANAGEMENT_FORBIDDEN`
+- `404 TEAM_NOT_FOUND`
+- `404 USER_NOT_FOUND`
+
+### `PATCH /api/v1/goals/:goalId`
+
+**Purpose**
+Updates an existing goal or quota.
+
+**Auth**
+Bearer token required, role must be `manager` or `admin`.
+
+**Update notes**
+
+- managers can update targets, actual values, dates, status, scope, and titles for teams they manage
+- switching to `team` scope clears `targetUserId`
+- switching to `user` scope requires a valid employee target in the goal team
+
+**Error codes**
+
+- `400 VALIDATION_ERROR`
+- `400 INVALID_GOAL_TARGET_ROLE`
+- `400 INVALID_GOAL_CONFIGURATION`
+- `401 UNAUTHORIZED`
+- `403 FORBIDDEN`
+- `403 GOAL_UPDATE_FORBIDDEN`
+- `404 GOAL_NOT_FOUND`
+- `404 TEAM_NOT_FOUND`
+- `404 USER_NOT_FOUND`

@@ -27,6 +27,11 @@ This project keeps runtime configuration in environment variables so secrets do 
 | `SUPABASE_JWT_SECRET` | Not used in Phase 1, required in Phase 2 token verification flows | `...` | Used to verify Supabase-issued JWTs when backend validation is implemented |
 | `DATABASE_URL` | Required for database-backed runtime features | `postgresql://...?...sslmode=no-verify` | Connection string used by the `pg` pool |
 | `DATABASE_SSL_REJECT_UNAUTHORIZED` | Recommended | `false` | Controls the TLS certificate check used by the `pg` client |
+| `DEMO_USER_PASSWORD` | Optional | `your-demo-user-password` | Used by the demo seed flow and convenient local smoke checks |
+| `SMOKE_TEST_BASE_URL` | Optional | `http://localhost:4000` | Base URL used by `npm run smoke` |
+| `SMOKE_TEST_EMAIL` | Optional | `manager.demo@cloudcomputing.local` | Login identity for smoke verification |
+| `SMOKE_TEST_PASSWORD` | Optional | `your-demo-user-password` | Password used by the smoke login flow |
+| `SMOKE_TEST_EXPECT_MANAGER_ACCESS` | Optional | `true` | Whether the smoke check should expect manager-only RBAC access to pass |
 
 ## Phase 1 Notes
 
@@ -34,9 +39,11 @@ This project keeps runtime configuration in environment variables so secrets do 
 - Database-backed features should not be built until `DATABASE_URL` is set.
 - Phase 2 will rely on the Supabase auth variables listed above.
 - For the Supabase pooler setup used in this project, `sslmode=no-verify` is the practical local-development setting.
+- Phase 9 adds optional smoke-test variables for deployment verification; they are not required for the API to boot.
 
 ## Security Guidance
 
 - Never commit `.env`.
 - Treat `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, and the database password as sensitive secrets.
+- Treat `SMOKE_TEST_PASSWORD` the same way you would treat any demo credential.
 - The anon key is less sensitive than the service role key, but it should still be managed through environment configuration rather than being hardcoded.
