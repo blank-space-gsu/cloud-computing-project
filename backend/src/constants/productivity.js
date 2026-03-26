@@ -1,0 +1,9 @@
+export const PRODUCTIVITY_SCOPES = {
+  INDIVIDUAL: "individual",
+  TEAM: "team"
+};
+
+export const PRODUCTIVITY_SCOPE_VALUES = Object.values(PRODUCTIVITY_SCOPES);
+
+export const PRODUCTIVITY_WEEKLY_TREND_PERIODS = 8;
+export const PRODUCTIVITY_MONTHLY_TREND_PERIODS = 6;
