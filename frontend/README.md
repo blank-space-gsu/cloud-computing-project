@@ -19,6 +19,7 @@ The current UI is presentation-ready for the class demo and stays frontend-only.
 - Productivity page with charts and performance summaries
 - Teams and people directory views
 - Manager and employee profile pages
+- Frontend-only profile editing preview on the profile page
 - Responsive TaskFlow styling across the app
 
 ## Frontend Structure
@@ -82,6 +83,7 @@ Use the password stored in `backend/.env` as `DEMO_USER_PASSWORD`.
 - Manager flows default to the strongest seeded team experience after sign-in.
 - The landing page does not reveal seeded database content before authentication.
 - Profile photo management and employee creation are not implemented as real backend actions yet. The UI leaves those as clear placeholders for backend follow-up.
+- Profile edit fields are available visually, but saving name, job title, date of birth, and address still needs backend support.
 - Supervisor or team contact details use backend data where available and frontend-safe fallbacks where needed for demo presentation.
 
 ## Backend Endpoints Used
@@ -113,4 +115,5 @@ These are the remaining items that would need backend support if the team wants 
 
 - Add employee from the manager UI
 - Upload or change employee profile photos from the manager side
+- Save self-profile edits for name, job title, date of birth, and address
 - Expand team directory contact data where roster responses do not include all desired fields

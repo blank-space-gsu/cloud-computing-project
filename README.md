@@ -41,6 +41,7 @@ Current frontend experience:
 - Tasks, goals, productivity, hours, teams, and profile pages
 - Team directory and people views
 - Manager and employee profile pages
+- Frontend-only profile edit preview for personal info fields
 - Responsive TaskFlow-styled UI using shared components and hash-based routing
 
 Frontend notes:
@@ -180,4 +181,5 @@ Frontend handoff items that still need backend support if the team wants them to
 
 - employee creation from the manager UI
 - employee profile photo upload and management
+- editable self-profile save flow for name, job title, date of birth, and address
 - richer team directory contact information where missing from roster responses

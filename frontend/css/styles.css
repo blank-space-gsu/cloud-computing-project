@@ -1555,6 +1555,12 @@ tbody tr:hover { background: #f8fafc; }
     linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
 }
 
+.profile-details-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
 .profile-details-feature {
   display: flex;
   flex-direction: column;
@@ -1608,6 +1614,83 @@ tbody tr:hover { background: #f8fafc; }
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 12px;
+}
+
+.profile-editor-card {
+  padding: 20px 22px;
+  border-radius: 20px;
+  border: 1px solid rgba(99, 102, 241, 0.16);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: var(--shadow-sm);
+}
+
+.profile-editor-card .form-group {
+  margin-bottom: 0;
+}
+
+.profile-editor-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.profile-editor-card__copy h5 {
+  font-size: 1.02rem;
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+.profile-editor-card__copy p {
+  font-size: 0.88rem;
+  color: var(--color-text-secondary);
+}
+
+.profile-editor-card__meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.profile-editor-readonly {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--color-border);
+  background: #f8fafc;
+}
+
+.profile-editor-readonly__label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+}
+
+.profile-editor-readonly__value {
+  color: var(--color-text);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.profile-editor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.profile-editor-note {
+  font-size: 0.82rem;
+  color: var(--color-text-secondary);
+  max-width: 36ch;
 }
 
 .member-email {
@@ -2194,8 +2277,15 @@ tbody tr:hover { background: #f8fafc; }
   }
 
   .profile-details-feature__header,
-  .profile-details-feature__identity {
+  .profile-details-feature__identity,
+  .profile-editor-card__head,
+  .profile-editor-actions {
+    flex-direction: column;
     align-items: flex-start;
+  }
+
+  .profile-editor-card__meta {
+    grid-template-columns: 1fr;
   }
 
   .landing-nav,

@@ -134,7 +134,7 @@ function renderProfile({ user, teams, preferredTeam, teamBundles, monthRange, co
   );
 }
 
-function renderManagerProfile({ teams, preferredTeam, managedTeams, leaders, roster, monthRange, context }) {
+function renderManagerProfile({ user, teams, preferredTeam, managedTeams, leaders, roster, monthRange, context }) {
   const summary = context.dashboard?.summary || {};
   const goalsSummary = context.goals?.summary || {};
   const hoursSummary = context.hours?.summary || {};
@@ -151,6 +151,19 @@ function renderManagerProfile({ teams, preferredTeam, managedTeams, leaders, ros
       summaryCard('Logged vs estimated', formatPercent(monthlyRollup.loggedVsEstimatedPercent || 0, 1), 'How close team effort is to planned effort.')
     ),
     el('div', { className: 'dashboard-layout' },
+      sectionCard(
+        'My profile details',
+        'Your account overview and a frontend-only profile editor preview.',
+        profileDetailsPanel({
+          user,
+          preferredTeam,
+          supportLabel: 'Managed teams',
+          supportValue: formatNumber(managedTeams.length),
+          photoAccess: 'You manage team photos',
+          directoryStatus: 'Roster visible'
+        }),
+        'dashboard-section--featured profile-details-card'
+      ),
       sectionCard(
         'Managed teams',
         'The seeded demo group is surfaced first so your strongest screens show up right away.',
@@ -217,8 +230,15 @@ function renderEmployeeProfile({ user, preferredTeam, leaders, teammates, monthR
     el('div', { className: 'dashboard-layout' },
       sectionCard(
         'My profile details',
-        'Your own account, role, and contact details.',
-        profileDetailsFeature(user, preferredTeam, supervisors),
+        'Your own account, role, contact details, and profile editor preview.',
+        profileDetailsPanel({
+          user,
+          preferredTeam,
+          supportLabel: 'Supervisors',
+          supportValue: formatNumber(supervisors.length),
+          photoAccess: 'Manager controlled',
+          directoryStatus: 'Partial support'
+        }),
         'dashboard-section--featured profile-details-card'
       ),
       sectionCard(
@@ -378,7 +398,14 @@ function supervisorCard(member) {
   );
 }
 
-function profileDetailsFeature(user, preferredTeam, supervisors) {
+function profileDetailsPanel({ user, preferredTeam, supportLabel, supportValue, photoAccess, directoryStatus }) {
+  return el('div', { className: 'profile-details-panel' },
+    profileDetailsFeature({ user, preferredTeam, supportLabel, supportValue, photoAccess, directoryStatus }),
+    profileEditorCard(user)
+  );
+}
+
+function profileDetailsFeature({ user, preferredTeam, supportLabel, supportValue, photoAccess, directoryStatus }) {
   return el('div', { className: 'profile-details-feature' },
     el('div', { className: 'profile-details-feature__header' },
       el('div', { className: 'profile-details-feature__identity' },
@@ -399,9 +426,44 @@ function profileDetailsFeature(user, preferredTeam, supervisors) {
     ),
     el('div', { className: 'profile-details-feature__grid' },
       metricStat('Primary team', preferredTeam?.name || 'No team'),
-      metricStat('Supervisors', formatNumber(supervisors.length)),
-      metricStat('Photo access', 'Manager controlled'),
-      metricStat('Directory emails', 'Backend support needed')
+      metricStat(supportLabel, supportValue),
+      metricStat('Photo access', photoAccess),
+      metricStat('Directory status', directoryStatus)
+    )
+  );
+}
+
+function profileEditorCard(user) {
+  return el('form', {
+    className: 'profile-editor-card',
+    onSubmit: (event) => {
+      event.preventDefault();
+      openSupportModal('Profile Editing', profileEditRequirements());
+    }
+  },
+    el('div', { className: 'profile-editor-card__head' },
+      el('div', { className: 'profile-editor-card__copy' },
+        el('h5', {}, 'Edit profile information'),
+        el('p', {}, 'This form is built in the UI now. Saving profile changes still needs backend support.')
+      ),
+      el('span', { className: 'badge badge-warning' }, 'Visual preview')
+    ),
+    el('div', { className: 'form-row' },
+      formGroup('First name', 'firstName', 'text', user.firstName || '', 'Enter first name'),
+      formGroup('Last name', 'lastName', 'text', user.lastName || '', 'Enter last name')
+    ),
+    el('div', { className: 'form-row' },
+      formGroup('Date of birth', 'dateOfBirth', 'date', '', ''),
+      formGroup('Role in company', 'jobTitle', 'text', user.jobTitle || '', 'Enter company role')
+    ),
+    textareaGroup('Address', 'address', '', 'Street address, city, state, ZIP'),
+    el('div', { className: 'profile-editor-card__meta' },
+      profileReadonlyField('App access role', capitalize(user.appRole)),
+      profileReadonlyField('Email', user.email)
+    ),
+    el('div', { className: 'profile-editor-actions' },
+      el('button', { className: 'btn btn-primary', type: 'submit' }, 'Save Changes'),
+      el('p', { className: 'profile-editor-note' }, 'This button opens the backend handoff checklist until profile update endpoints are available.')
     )
   );
 }
@@ -448,6 +510,49 @@ function summaryCard(label, value, note) {
     el('div', { className: 'card-value' }, value),
     el('div', { className: 'card-footer' }, note)
   );
+}
+
+function formGroup(label, name, type, value, placeholder) {
+  return el('div', { className: 'form-group' },
+    el('label', { className: 'form-label', htmlFor: name }, label),
+    el('input', {
+      id: name,
+      name,
+      type,
+      value,
+      placeholder,
+      className: 'form-input'
+    })
+  );
+}
+
+function textareaGroup(label, name, value, placeholder) {
+  return el('div', { className: 'form-group' },
+    el('label', { className: 'form-label', htmlFor: name }, label),
+    el('textarea', {
+      id: name,
+      name,
+      placeholder,
+      className: 'form-textarea'
+    }, value || '')
+  );
+}
+
+function profileReadonlyField(label, value) {
+  return el('div', { className: 'profile-editor-readonly' },
+    el('span', { className: 'profile-editor-readonly__label' }, label),
+    el('strong', { className: 'profile-editor-readonly__value' }, value)
+  );
+}
+
+function profileEditRequirements() {
+  return [
+    'Add a PATCH or PUT profile update endpoint, such as /api/v1/users/me',
+    'Add validation rules for first name, last name, job title, date of birth, and address',
+    'Add database fields for date of birth and address',
+    'Decide which fields users can edit directly versus which stay manager or admin controlled',
+    'Return the updated profile payload so the frontend can refresh immediately after save'
+  ];
 }
 
 function memberEmail(member) {
