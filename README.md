@@ -4,7 +4,7 @@ University cloud computing project for a workforce task management web applicati
 
 ## Project Overview
 
-The application helps managers assign and monitor work while giving employees a clear view of what they need to complete. The backend is being built first as a modular REST API that a plain HTML, CSS, and JavaScript frontend can consume without extra framework assumptions.
+The application helps managers assign and monitor work while giving employees a clear view of what they need to complete. The backend is implemented as a modular REST API, and the frontend is a plain HTML, CSS, and JavaScript single-page app that consumes those endpoints without a framework dependency.
 
 ### MVP
 
@@ -25,8 +25,31 @@ The application helps managers assign and monitor work while giving employees a 
 ```text
 cloud-computing-project/
   backend/   # Node.js + Express REST API
-  frontend/  # Separate frontend workspace
+  frontend/  # Plain HTML/CSS/JS frontend app
 ```
+
+## Frontend Status
+
+The frontend lives in `/frontend` and is now implemented.
+
+Current frontend experience:
+
+- Public landing page before sign-in
+- Role-based login flow for manager and employee accounts
+- Manager dashboard with task, hour, goal, and productivity summaries
+- Employee dashboard with personal tasks, hour logging, goals, and performance views
+- Tasks, goals, productivity, hours, teams, and profile pages
+- Team directory and people views
+- Manager and employee profile pages
+- Responsive TaskFlow-styled UI using shared components and hash-based routing
+
+Frontend notes:
+
+- The frontend work was kept separate from backend source changes.
+- Local demo data is shown through the existing backend seed scripts and API responses, not through new backend code in this branch.
+- Some UI actions are intentionally presentation-only until backend support exists, including employee creation and profile photo management.
+
+See [frontend/README.md](frontend/README.md) for the frontend structure, features, and local run instructions.
 
 ## Backend Stack
 
@@ -67,13 +90,24 @@ Phases 0, 1, 2, 3, 4, 5, 6, 7, 8, and 9 are implemented in `/backend`:
 
 ## Quick Start
 
+Backend:
+
 ```bash
 cd backend
 npm install
 npm run dev
 ```
 
-Run tests:
+Frontend:
+
+```bash
+cd frontend
+python3 -m http.server 5500
+```
+
+Then open `http://localhost:5500`.
+
+Run backend tests:
 
 ```bash
 cd backend
@@ -86,6 +120,14 @@ Seed a repeatable live demo dataset:
 cd backend
 npm run seed:demo-group
 ```
+
+Demo accounts:
+
+- `manager.demo@cloudcomputing.local`
+- `employee.one@cloudcomputing.local`
+- `employee.two@cloudcomputing.local`
+
+The demo password is controlled by `DEMO_USER_PASSWORD` in the local backend `.env`.
 
 ## Key Backend Docs
 
@@ -103,9 +145,9 @@ npm run seed:demo-group
 - [Error handling conventions](backend/docs/ERROR_HANDLING_CONVENTIONS.md)
 - [Deployment guide](backend/docs/DEPLOYMENT_GUIDE.md)
 
-## Frontend Team Notes
+## Frontend Integration Notes
 
-The backend currently guarantees:
+The frontend currently uses the following stable backend surface:
 
 - Base API prefix: `/api/v1`
 - Health endpoint: `GET /api/v1/health`
@@ -133,3 +175,9 @@ The backend currently guarantees:
 - Goal update endpoint: `PATCH /api/v1/goals/:goalId`
 
 The planned backend roadmap is now complete. Future enhancements can continue using the same response conventions so the frontend team can keep reusing one shared `fetch()` helper.
+
+Frontend handoff items that still need backend support if the team wants them to become real features:
+
+- employee creation from the manager UI
+- employee profile photo upload and management
+- richer team directory contact information where missing from roster responses
