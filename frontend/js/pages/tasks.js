@@ -8,7 +8,7 @@ import { showError, showSuccess } from '../components/toast.js';
 import { openModal, closeModal } from '../components/modal.js';
 import { taskCard } from '../components/taskCard.js';
 import { statusLabel, priorityLabel, formatDate, mondayDateString } from '../utils/format.js';
-import { selectPreferredTeam } from '../utils/teams.js';
+import { getVisibleTeams, selectPreferredTeam } from '../utils/teams.js';
 
 let currentPage = 1;
 const PAGE_LIMIT = 12;
@@ -43,7 +43,8 @@ async function renderEmployeeTasks(container) {
     const list = el('div', { className: 'task-list' });
     for (const t of tasks) {
       list.appendChild(taskCard(t, {
-        onEdit: (task) => openEmployeeEditModal(task, container)
+        onEdit: (task) => openEmployeeEditModal(task, container),
+        onComplete: (task) => quickCompleteTask(task, () => renderEmployeeTasks(container))
       }));
     }
     container.appendChild(list);
@@ -113,7 +114,7 @@ async function renderManagerTasks(container) {
   let teams = [];
   try {
     const res = await api.get('/teams');
-    teams = res.data.teams || [];
+    teams = getVisibleTeams(res.data.teams || []);
   } catch { /* ignore */ }
 
   clearElement(container);
@@ -123,7 +124,7 @@ async function renderManagerTasks(container) {
 
   const filtersBar = el('div', { className: 'filters-bar' });
 
-  if (teams.length) {
+  if (teams.length > 1) {
     const teamSel = el('select', { className: 'form-select' });
     for (const t of teams) teamSel.appendChild(el('option', { value: t.id }, t.name));
     teamSel.value = state.teamId;
@@ -180,6 +181,7 @@ async function renderManagerTasks(container) {
       for (const t of tasks) {
         list.appendChild(taskCard(t, {
           showAssignee: true,
+          onComplete: (task) => quickCompleteTask(task, loadTasks),
           onEdit: (task) => openManagerEditModal(task, loadTasks),
           onAssign: (task) => openAssignModal(task, state.teamId, members, loadTasks),
           onDelete: (task) => confirmDelete(task, loadTasks)
@@ -246,7 +248,7 @@ function openCreateTaskModal(teamId, members, container, reload) {
     ),
     el('div', { className: 'form-row' },
       el('div', { className: 'form-group' },
-        el('label', { className: 'form-label' }, 'Estimated Hours'),
+        el('label', { className: 'form-label' }, 'Effort Estimate'),
         el('input', { className: 'form-input', name: 'estimatedHours', type: 'number', min: '0', step: '0.5', placeholder: '0' })
       ),
       el('div', { className: 'form-group' },
@@ -427,6 +429,19 @@ function confirmDelete(task, reload) {
 
   openModal('Confirm Delete', msg, el('div', { className: 'btn-group' },
     el('button', { className: 'btn btn-outline', onClick: closeModal }, 'Cancel'), delBtn));
+}
+
+async function quickCompleteTask(task, reload) {
+  try {
+    await api.patch(`/tasks/${task.id}`, {
+      status: 'completed',
+      progressPercent: 100
+    });
+    showSuccess('Task marked completed.');
+    await reload();
+  } catch (err) {
+    showError(err);
+  }
 }
 
 /* ======================== PAGINATION ======================== */

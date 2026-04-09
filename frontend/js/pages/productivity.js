@@ -9,13 +9,12 @@ import { lineChart, barChart } from '../components/charts.js';
 import {
   capitalize,
   formatDateRange,
-  formatHours,
   formatNumber,
   formatPercent,
   formatTrendLabel,
   formatTrendTooltip
 } from '../utils/format.js';
-import { selectPreferredTeam } from '../utils/teams.js';
+import { getVisibleTeams, selectPreferredTeam } from '../utils/teams.js';
 
 export default async function productivityPage(container) {
   renderHeader('Productivity', isManager() ? 'Team performance metrics' : 'Your performance metrics');
@@ -45,7 +44,7 @@ async function renderManagerProductivity(container) {
   let teams = [];
   try {
     const response = await api.get('/teams');
-    teams = (response.data.teams || []).filter((team) => team.canManageTeam);
+    teams = getVisibleTeams((response.data.teams || []).filter((team) => team.canManageTeam));
   } catch {
     teams = [];
   }
@@ -64,10 +63,6 @@ async function renderManagerProductivity(container) {
   };
 
   const filtersBar = el('div', { className: 'filters-bar filters-bar--hero' });
-  const teamSel = el('select', { className: 'form-select' },
-    ...teams.map((team) => el('option', { value: team.id }, team.name))
-  );
-  teamSel.value = state.teamId;
   const scopeSel = el('select', { className: 'form-select' },
     el('option', { value: 'team' }, 'Team overview'),
     el('option', { value: 'individual' }, 'Individual view')
@@ -78,11 +73,19 @@ async function renderManagerProductivity(container) {
     memberSel
   );
 
-  teamSel.addEventListener('change', async () => {
-    state.teamId = teamSel.value;
-    await loadMembers();
-    await loadData();
-  });
+  if (teams.length > 1) {
+    const teamSel = el('select', { className: 'form-select' },
+      ...teams.map((team) => el('option', { value: team.id }, team.name))
+    );
+    teamSel.value = state.teamId;
+    teamSel.addEventListener('change', async () => {
+      state.teamId = teamSel.value;
+      await loadMembers();
+      await loadData();
+    });
+
+    filtersBar.appendChild(el('div', { className: 'filter-group' }, el('label', {}, 'Team'), teamSel));
+  }
 
   scopeSel.addEventListener('change', async () => {
     state.scope = scopeSel.value;
@@ -96,7 +99,6 @@ async function renderManagerProductivity(container) {
   });
 
   filtersBar.append(
-    el('div', { className: 'filter-group' }, el('label', {}, 'Team'), teamSel),
     el('div', { className: 'filter-group' }, el('label', {}, 'Scope'), scopeSel),
     memberGroup
   );
@@ -152,9 +154,10 @@ function renderProductivityView(data, { title }) {
 
   const fragment = el('div');
   fragment.append(
-    heroBanner(title, data),
-    buildSummaryCards(weekly, monthly, yearly),
-    buildRollupDeck(data.rollups || {}),
+    el('div', { className: 'dashboard-top-split' },
+      heroBanner(title, data),
+      summaryTableCard('At a glance', buildSummaryRows(weekly, monthly, yearly))
+    ),
     buildTrendGrid(data.charts || {})
   );
 
@@ -174,8 +177,8 @@ function heroBanner(title, data) {
       el('h2', { className: 'page-hero__title' }, title),
       el('p', { className: 'page-hero__description' },
         data.scope === 'team'
-          ? 'Weekly, monthly, and yearly performance rollups for the selected team.'
-          : 'Track personal completion, logged hours, and estimated effort over time.'
+          ? 'Weekly, monthly, and yearly task performance rollups for the selected team.'
+          : 'Track personal completion, blockers, and overall progress over time.'
       )
     ),
     el('div', { className: 'page-hero__meta' },
@@ -186,70 +189,34 @@ function heroBanner(title, data) {
   );
 }
 
-function buildSummaryCards(weekly, monthly, yearly) {
-  return el('div', { className: 'card-grid card-grid--dashboard' },
-    summaryCard('Tasks this week', formatNumber(weekly.taskCount || 0), 'Current weekly task count in the active scope.'),
-    summaryCard('Monthly completion', formatPercent(monthly.completionRate || 0, 1), 'Completed tasks as a share of monthly workload.'),
-    summaryCard('Monthly logged hours', formatHours(monthly.loggedHours || 0), 'Hours recorded inside the monthly window.'),
-    summaryCard('Logged vs estimated', formatPercent(monthly.loggedVsEstimatedPercent || 0, 1), 'How close logged time is to estimated time.'),
-    summaryCard('Yearly tasks', formatNumber(yearly.taskCount || 0), 'Tasks counted inside the yearly window.'),
-    summaryCard('Monthly blockers', formatNumber(monthly.blockedTaskCount || 0), 'Blocked tasks that need attention.')
-  );
-}
-
-function summaryCard(label, value, note) {
-  return el('div', { className: 'card dashboard-stat-card' },
-    el('div', { className: 'card-title' }, label),
-    el('div', { className: 'card-value' }, value),
-    el('div', { className: 'card-footer' }, note)
-  );
-}
-
-function buildRollupDeck(rollups) {
-  const entries = [
-    ['Weekly rollup', rollups.weekly],
-    ['Monthly rollup', rollups.monthly],
-    ['Yearly rollup', rollups.yearly]
+function buildSummaryRows(weekly, monthly, yearly) {
+  return [
+    {
+      label: 'Tasks this week',
+      value: formatNumber(weekly.taskCount || 0),
+      note: 'Current weekly task count in the active scope.'
+    },
+    {
+      label: 'Monthly completion',
+      value: formatPercent(monthly.completionRate || 0, 1),
+      note: 'Completed tasks as a share of monthly workload.'
+    },
+    {
+      label: 'Average progress',
+      value: formatPercent(monthly.averageProgressPercent || 0, 1),
+      note: 'Average progress across monthly tasks.'
+    },
+    {
+      label: 'Monthly blockers',
+      value: formatNumber(monthly.blockedTaskCount || 0),
+      note: 'Blocked tasks that need attention.'
+    },
+    {
+      label: 'Yearly tasks',
+      value: formatNumber(yearly.taskCount || 0),
+      note: 'Tasks counted inside the yearly window.'
+    }
   ];
-
-  return el('section', { className: 'insight-strip' },
-    el('div', { className: 'insight-strip__header' },
-      el('h3', {}, 'Detailed rollups'),
-      el('p', {}, 'The main statistics used for productivity summaries and manager reporting.')
-    ),
-    el('div', { className: 'rollup-deck' },
-      ...entries.map(([label, rollup]) => productivityRollupCard(label, rollup || {}))
-    )
-  );
-}
-
-function productivityRollupCard(label, rollup) {
-  return el('article', { className: 'card productivity-rollup-card' },
-    el('div', { className: 'productivity-rollup-card__header' },
-      el('h3', {}, label),
-      el('span', { className: 'badge badge-info' }, formatDateRange(rollup.startDate, rollup.endDate))
-    ),
-    el('div', { className: 'productivity-rollup-card__grid' },
-      statChip('Tasks', formatNumber(rollup.taskCount || 0)),
-      statChip('Completed', formatNumber(rollup.completedTaskCount || 0)),
-      statChip('Open', formatNumber(rollup.openTaskCount || 0)),
-      statChip('In progress', formatNumber(rollup.inProgressTaskCount || 0)),
-      statChip('Blocked', formatNumber(rollup.blockedTaskCount || 0)),
-      statChip('Urgent', formatNumber(rollup.urgentTaskCount || 0)),
-      statChip('Avg progress', formatPercent(rollup.averageProgressPercent || 0, 1)),
-      statChip('Estimated', formatHours(rollup.estimatedHours || 0)),
-      statChip('Logged', formatHours(rollup.loggedHours || 0)),
-      statChip('Completion', formatPercent(rollup.completionRate || 0, 1)),
-      statChip('Logged vs est.', formatPercent(rollup.loggedVsEstimatedPercent || 0, 1))
-    )
-  );
-}
-
-function statChip(label, value) {
-  return el('div', { className: 'metrics-panel__item' },
-    el('span', { className: 'metrics-panel__label' }, label),
-    el('strong', { className: 'metrics-panel__value' }, value)
-  );
 }
 
 function buildTrendGrid(charts) {
@@ -261,18 +228,18 @@ function buildTrendGrid(charts) {
   grid.appendChild(trendChartCard({
     title: 'Weekly trend',
     canvasId: 'productivity-weekly-trend',
-    subtitle: 'Completion and logged hours across recent weeks.',
+    subtitle: 'Completed and open tasks across recent weeks.',
     points: weeklyTrend,
     datasets: [
       { label: 'Completed Tasks', dataKey: 'completedTaskCount', color: '#22c55e' },
-      { label: 'Hours Logged', dataKey: 'loggedHours', color: '#06b6d4' }
+      { label: 'Open Tasks', dataKey: 'openTaskCount', color: '#6366f1' }
     ]
   }));
 
   grid.appendChild(trendChartCard({
     title: 'Monthly trend',
     canvasId: 'productivity-monthly-trend',
-    subtitle: 'Monthly completion and hours over time.',
+    subtitle: 'Monthly completion and task volume over time.',
     points: monthlyTrend,
     datasets: [
       { label: 'Completed Tasks', dataKey: 'completedTaskCount', color: '#6366f1' },
@@ -285,24 +252,24 @@ function buildTrendGrid(charts) {
 
 function buildMemberBreakdown(members) {
   if (!members.length) {
-    return stackedSection('Team member comparison', 'Compare teammates by task volume, progress, and time logged.', emptyState('No member data', 'No member breakdown was returned for this team.'));
+    return stackedSection('Team member comparison', 'Compare teammates by task volume and progress.', emptyState('No member data', 'No member breakdown was returned for this team.'));
   }
 
-  const employeeRows = members.filter((member) => member.taskCount || member.hoursEntryCount || member.completedTaskCount);
+  const employeeRows = members.filter((member) => member.taskCount || member.completedTaskCount || member.openTaskCount);
   const section = stackedSection(
     'Team member comparison',
-    'The monthly breakdown is ideal for the manager-facing reporting slides.',
+    'A compact comparison of the key task metrics for each visible employee.',
     el('div')
   );
 
   const body = section.querySelector('div:last-child');
-  body.appendChild(chartCard('Completed tasks vs hours', 'productivity-member-comparison', 'A quick comparison across visible employees.'));
+  body.appendChild(chartCard('Completed vs open tasks', 'productivity-member-comparison', 'A quick comparison across visible employees.'));
   requestAnimationFrame(() => barChart(
     'productivity-member-comparison',
     employeeRows.map((member) => member.fullName),
     [
-      { label: 'Completed Tasks', data: employeeRows.map((member) => member.completedTaskCount), color: '#22c55e' },
-      { label: 'Hours Logged', data: employeeRows.map((member) => member.loggedHours), color: '#6366f1' }
+      { label: 'Completed Tasks', data: employeeRows.map((member) => member.completedTaskCount || 0), color: '#22c55e' },
+      { label: 'Open Tasks', data: employeeRows.map((member) => member.openTaskCount || 0), color: '#6366f1' }
     ]
   ));
 
@@ -315,10 +282,9 @@ function buildMemberBreakdown(members) {
             el('th', {}, 'Tasks'),
             el('th', {}, 'Completed'),
             el('th', {}, 'Open'),
-            el('th', {}, 'Logged hours'),
-            el('th', {}, 'Estimated hours'),
-            el('th', {}, 'Completion rate'),
-            el('th', {}, 'Logged vs est.')
+            el('th', {}, 'Blocked'),
+            el('th', {}, 'Avg progress'),
+            el('th', {}, 'Completion rate')
           )
         ),
         el('tbody', {},
@@ -327,10 +293,9 @@ function buildMemberBreakdown(members) {
             el('td', {}, formatNumber(member.taskCount || 0)),
             el('td', {}, formatNumber(member.completedTaskCount || 0)),
             el('td', {}, formatNumber(member.openTaskCount || 0)),
-            el('td', {}, formatHours(member.loggedHours || 0)),
-            el('td', {}, formatHours(member.estimatedHours || 0)),
-            el('td', {}, formatPercent(member.completionRate || 0, 1)),
-            el('td', {}, formatPercent(member.loggedVsEstimatedPercent || 0, 1))
+            el('td', {}, formatNumber(member.blockedTaskCount || 0)),
+            el('td', {}, formatPercent(member.averageProgressPercent || 0, 1)),
+            el('td', {}, formatPercent(member.completionRate || 0, 1))
           ))
         )
       )
@@ -356,9 +321,9 @@ function userFocusCard(user, monthlyRollup) {
         el('div', { className: 'performance-roster__grid' },
           rosterStat('Monthly tasks', formatNumber(monthlyRollup.taskCount || 0)),
           rosterStat('Completed', formatNumber(monthlyRollup.completedTaskCount || 0)),
-          rosterStat('Logged hours', formatHours(monthlyRollup.loggedHours || 0)),
+          rosterStat('Open', formatNumber(monthlyRollup.openTaskCount || 0)),
+          rosterStat('Blocked', formatNumber(monthlyRollup.blockedTaskCount || 0)),
           rosterStat('Completion rate', formatPercent(monthlyRollup.completionRate || 0, 1)),
-          rosterStat('Logged vs est.', formatPercent(monthlyRollup.loggedVsEstimatedPercent || 0, 1)),
           rosterStat('Avg progress', formatPercent(monthlyRollup.averageProgressPercent || 0, 1))
         )
       )
@@ -373,6 +338,30 @@ function chartCard(title, canvasId, subtitle) {
       subtitle ? el('p', {}, subtitle) : null
     ),
     el('div', { className: 'chart-container' }, el('canvas', { id: canvasId }))
+  );
+}
+
+function summaryTableCard(title, rows) {
+  return el('section', { className: 'card dashboard-summary-table-card' },
+    el('div', { className: 'section-header section-header--stacked' },
+      el('div', {},
+        el('h3', { className: 'section-title' }, title),
+        el('p', { className: 'section-subtitle' }, 'The most important metrics for this view in one compact table.')
+      )
+    ),
+    el('div', { className: 'table-wrapper table-wrapper--compact' },
+      el('table', { className: 'dashboard-summary-table' },
+        el('tbody', {},
+          ...rows.map((row) => el('tr', {},
+            el('th', { scope: 'row', className: 'dashboard-summary-table__metric' },
+              el('div', { className: 'dashboard-summary-table__label' }, row.label),
+              el('span', { className: 'dashboard-summary-table__note' }, row.note)
+            ),
+            el('td', { className: 'dashboard-summary-table__value' }, row.value)
+          ))
+        )
+      )
+    )
   );
 }
 

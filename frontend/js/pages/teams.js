@@ -5,18 +5,24 @@ import { renderHeader } from '../components/header.js';
 import { showLoading, hideLoading } from '../components/loading.js';
 import { emptyState } from '../components/emptyState.js';
 import { openModal, closeModal } from '../components/modal.js';
-import { showError } from '../components/toast.js';
+import { showError, showSuccess } from '../components/toast.js';
 import {
   capitalize,
-  firstDayOfCurrentMonth,
   formatDate,
   formatDateRange,
-  formatHours,
   formatNumber,
-  formatPercent,
-  lastDayOfCurrentMonth
+  formatPercent
 } from '../utils/format.js';
-import { selectPreferredTeam, sortTeamsForDemo } from '../utils/teams.js';
+import { getVisibleTeams, selectPreferredTeam, sortTeamsForDemo } from '../utils/teams.js';
+import {
+  assignPeopleToTeam,
+  buildAssignablePeople,
+  createCustomTeam,
+  getTeamDetail,
+  getWorkspaceTeams,
+  isLocalTeam,
+  updateTeamRecord
+} from '../utils/localTeams.js';
 
 export default async function teamsPage(container, params) {
   if (params.teamId) {
@@ -35,10 +41,16 @@ async function renderTeamList(container) {
     const { data } = await api.get('/teams');
     clearElement(container);
 
-    const teams = sortTeamsForDemo(data.teams || []);
+    const baseTeams = sortTeamsForDemo(getVisibleTeams(data.teams || []));
+    const teams = getWorkspaceTeams(baseTeams, getUser());
     const preferredTeam = selectPreferredTeam(teams);
     if (!teams.length) {
       container.appendChild(emptyState('No teams', 'You are not part of any teams yet.'));
+      return;
+    }
+
+    if (teams.length === 1) {
+      await renderTeamDetail(container, teams[0].id, { showBackButton: false });
       return;
     }
 
@@ -52,10 +64,36 @@ async function renderTeamList(container) {
       ),
       el('div', { className: 'page-hero__meta' },
         heroPill(`Visible teams · ${formatNumber(teams.length)}`),
-        heroPill(`Demo-first ordering · ${preferredTeam ? 'On' : 'Off'}`),
-        preferredTeam ? heroPill(`Top pick · ${preferredTeam.name}`) : null
+        heroPill(`People directory · Ready`),
+        preferredTeam ? heroPill(`Focused team · ${preferredTeam.name}`) : null
       )
     );
+
+    const actions = isManager()
+      ? el('div', { className: 'btn-group', style: 'margin-bottom:16px' },
+          el('button', {
+            className: 'btn btn-primary',
+            type: 'button',
+            onClick: async () => {
+              const bundles = await loadTeamBundles(baseTeams);
+              openTeamEditorModal({
+                mode: 'create',
+                availablePeople: buildAssignablePeople(bundles, getUser()),
+                onSave: async ({ name, description, members }) => {
+                  const created = createCustomTeam({
+                    name,
+                    description,
+                    currentUser: getUser(),
+                    selectedMembers: members
+                  });
+                  showSuccess('New team created in the frontend demo workspace.');
+                  window.location.hash = `#/teams/${created.id}`;
+                }
+              });
+            }
+          }, '+ New Team')
+        )
+      : null;
 
     const grid = el('div', { className: 'team-grid' },
       ...teams.map((team) => el('div', {
@@ -64,7 +102,10 @@ async function renderTeamList(container) {
       },
         el('div', { className: 'team-card__top' },
           el('h3', {}, team.name),
-          preferredTeam?.id === team.id ? el('span', { className: 'badge badge-primary' }, 'Demo ready') : null
+          el('div', { className: 'task-badges' },
+            preferredTeam?.id === team.id ? el('span', { className: 'badge badge-primary' }, 'Demo ready') : null,
+            team.isLocalTeam ? el('span', { className: 'badge badge-info' }, 'Local demo') : null
+          )
         ),
         el('p', {}, team.description || 'No description'),
         el('div', { className: 'team-stats' },
@@ -75,42 +116,113 @@ async function renderTeamList(container) {
       ))
     );
 
-    container.append(overview, grid);
+    container.append(overview);
+    if (actions) container.append(actions);
+    container.append(grid);
   } catch (err) {
     showError(err);
     hideLoading(container);
   }
 }
 
-async function renderTeamDetail(container, teamId) {
+async function renderTeamDetail(container, teamId, { showBackButton = true } = {}) {
   renderHeader('Team Directory', 'Loading roster and team details');
   clearElement(container);
   showLoading(container);
 
   try {
-    const { data } = await api.get(`/teams/${teamId}/members`);
+    const currentUser = getUser();
+    const { data: teamsData } = await api.get('/teams');
+    const baseTeams = sortTeamsForDemo(getVisibleTeams(teamsData.teams || []));
+    const workspaceTeams = getWorkspaceTeams(baseTeams, currentUser);
+    const baseTeam = workspaceTeams.find((team) => team.id === teamId && !team.isLocalTeam) || null;
+    const teamBundles = await loadTeamBundles(baseTeams);
+    const availablePeople = buildAssignablePeople(teamBundles, currentUser);
+
     clearElement(container);
 
-    const team = data.team || {};
-    const members = data.members || [];
+    let team = {};
+    let members = [];
+
+    if (isLocalTeam(teamId)) {
+      const resolved = getTeamDetail(teamId, { currentUser });
+      team = resolved.team;
+      members = resolved.members;
+    } else {
+      const { data } = await api.get(`/teams/${teamId}/members`);
+      const resolved = getTeamDetail(teamId, {
+        baseTeam: baseTeam || data.team,
+        baseMembers: data.members || [],
+        currentUser
+      });
+      team = resolved.team;
+      members = resolved.members;
+    }
+
     const leaders = members.filter((member) => member.membershipRole === 'manager');
     const employees = members.filter((member) => member.membershipRole !== 'manager');
-    const monthRange = {
-      start: firstDayOfCurrentMonth(),
-      end: lastDayOfCurrentMonth()
-    };
 
     renderHeader(team.name || 'Team Directory', isManager() ? 'People, leadership, and demo-ready team context' : 'Your team roster');
 
-    const actions = el('div', { className: 'btn-group' },
-      el('button', { className: 'btn btn-outline', type: 'button', onClick: () => { window.location.hash = '#/teams'; } }, '← Back to Teams'),
-      isManager() && team.canManageTeam
-        ? el('button', { className: 'btn btn-primary', type: 'button', onClick: () => openSupportModal('Add Employee', addEmployeeRequirements()) }, 'Add Employee')
-        : null,
-      isManager() && team.canManageTeam
-        ? el('button', { className: 'btn btn-outline', type: 'button', onClick: () => openSupportModal('Profile Photos', photoRequirements()) }, 'Photo Controls')
-        : null
-    );
+    const actionItems = [];
+    if (showBackButton) {
+      actionItems.push(
+        el('button', { className: 'btn btn-outline', type: 'button', onClick: () => { window.location.hash = '#/teams'; } }, '← Back to Teams')
+      );
+    }
+    if (isManager() && team.canManageTeam) {
+      actionItems.push(
+        el('button', {
+          className: 'btn btn-primary',
+          type: 'button',
+          onClick: () => openTeamEditorModal({
+            mode: 'create',
+            availablePeople,
+            onSave: async ({ name, description, members: selectedMembers }) => {
+              const created = createCustomTeam({
+                name,
+                description,
+                currentUser,
+                selectedMembers
+              });
+              showSuccess('New team created in the frontend demo workspace.');
+              window.location.hash = `#/teams/${created.id}`;
+            }
+          })
+        }, 'Create Team'),
+        el('button', {
+          className: 'btn btn-outline',
+          type: 'button',
+          onClick: () => openTeamEditorModal({
+            mode: 'edit',
+            team,
+            availablePeople,
+            onSave: async ({ name, description }) => {
+              updateTeamRecord(team.id, { name, description });
+              showSuccess('Team details updated for this frontend demo.');
+              await renderTeamDetail(container, team.id, { showBackButton });
+            }
+          })
+        }, 'Edit Team'),
+        el('button', {
+          className: 'btn btn-outline',
+          type: 'button',
+          onClick: () => openAssignPeopleModal({
+            team,
+            availablePeople,
+            onSave: async (selectedMembers) => {
+              assignPeopleToTeam(team.id, selectedMembers, { teamName: team.name });
+              showSuccess('People assigned to the team in this frontend demo.');
+              await renderTeamDetail(container, team.id, { showBackButton });
+            }
+          })
+        }, 'Assign People'),
+        el('button', { className: 'btn btn-primary', type: 'button', onClick: () => openSupportModal('Add Employee', addEmployeeRequirements()) }, 'Add Employee'),
+        el('button', { className: 'btn btn-outline', type: 'button', onClick: () => openSupportModal('Profile Photos', photoRequirements()) }, 'Photo Controls')
+      );
+    }
+
+    const actions = actionItems.length ? el('div', { className: 'btn-group' }, ...actionItems) : null;
 
     const hero = el('section', { className: 'page-hero page-hero--compact' },
       el('div', { className: 'page-hero__content' },
@@ -121,43 +233,35 @@ async function renderTeamDetail(container, teamId) {
       el('div', { className: 'page-hero__meta' },
         heroPill(`Members · ${formatNumber(team.memberCount || members.length)}`),
         heroPill(`Managers · ${formatNumber(team.managerCount || leaders.length)}`),
-        heroPill(`Month window · ${formatDateRange(monthRange.start, monthRange.end)}`)
+        heroPill(`Directory · ${team.canManageTeam ? 'Manager tools ready' : 'Roster view'}`),
+        team.isLocalTeam ? heroPill('Source · Local demo team') : null
       )
     );
 
-    container.append(
-      hero,
-      actions,
-      el('div', { className: 'card-grid card-grid--dashboard', style: 'margin-top:24px' },
-        summaryCard('Leadership', formatNumber(leaders.length), 'Managers and supervisors in this team.'),
-        summaryCard('Employees', formatNumber(employees.length), 'Employees visible in this roster.'),
-        summaryCard('Can manage', team.canManageTeam ? 'Yes' : 'No', team.canManageTeam ? 'Manager actions are available on this team.' : 'Read-only roster access.'),
-        summaryCard('Email directory', 'Partial', 'Team member email contact info still needs backend support.')
-      ),
-      el('div', { className: 'dashboard-layout' },
+    const layout = el('div', { className: 'dashboard-layout', style: 'margin-top:20px' },
         sectionCard(
           'Leadership',
-          'Managers are listed first because employees can use this area to identify their supervisors.',
+          'Managers are listed first so employees can quickly identify their supervisors.',
           leaders.length
             ? el('div', { className: 'member-grid profile-member-grid' },
-                ...leaders.map((member) => personCard(member, () => openMemberDetailModal({ team, member, monthRange })))
+                ...leaders.map((member) => personCard(member, () => openMemberDetailModal({ team, member })))
               )
             : emptyState('No managers found', 'No manager roster was returned for this team.')
         ),
         sectionCard(
           'Employees',
           isManager()
-            ? 'Click an employee to open their task, goal, and hours snapshot.'
+            ? 'Click an employee to open their task and goal snapshot.'
             : 'Your teammate roster for this team.',
           employees.length
             ? el('div', { className: 'member-grid profile-member-grid' },
-                ...employees.map((member) => personCard(member, () => openMemberDetailModal({ team, member, monthRange })))
+                ...employees.map((member) => personCard(member, () => openMemberDetailModal({ team, member })))
               )
             : emptyState('No employees found', 'No employee roster was returned for this team.')
         ),
         sectionCard(
-          'Directory notes',
-          'The frontend is ready for richer contact and profile management, but some actions still need backend support.',
+          'People tools',
+          'The frontend flow is ready for contact and profile management, but some actions still need backend support.',
           el('div', { className: 'support-card' },
             el('p', {}, 'Right now you can inspect roster roles and profile snapshots. New employee creation, avatar uploads, and full team email contact lists still need backend endpoints.'),
             team.canManageTeam
@@ -168,12 +272,136 @@ async function renderTeamDetail(container, teamId) {
               : null
           )
         )
-      )
-    );
+      );
+
+    container.append(hero);
+    if (actions) container.append(actions);
+    container.append(layout);
   } catch (err) {
     showError(err);
     hideLoading(container);
   }
+}
+
+async function loadTeamBundles(baseTeams) {
+  return Promise.all(
+    baseTeams.map(async (team) => {
+      try {
+        const { data } = await api.get(`/teams/${team.id}/members`);
+        return { team, members: data.members || [] };
+      } catch {
+        return { team, members: [] };
+      }
+    })
+  );
+}
+
+function openTeamEditorModal({ mode, team = null, availablePeople = [], onSave }) {
+  const nameInput = el('input', {
+    className: 'form-input',
+    name: 'teamName',
+    value: team?.name || '',
+    placeholder: 'Physical Ops Team'
+  });
+  const descriptionInput = el('textarea', {
+    className: 'form-textarea',
+    name: 'teamDescription',
+    placeholder: 'Short description for this team.'
+  }, team?.description || '');
+
+  const list = mode === 'create'
+    ? el('div', { className: 'team-member-picker' },
+        ...availablePeople.map((person) => el('label', { className: 'team-member-picker__item' },
+          el('input', { type: 'checkbox', value: person.id }),
+          el('div', {},
+            el('strong', {}, person.fullName),
+            el('span', {}, person.jobTitle || capitalize(person.appRole))
+          )
+        ))
+      )
+    : null;
+
+  const form = el('form', {},
+    el('div', { className: 'form-group' },
+      el('label', { className: 'form-label' }, 'Team name'),
+      nameInput
+    ),
+    el('div', { className: 'form-group' },
+      el('label', { className: 'form-label' }, 'Description'),
+      descriptionInput
+    ),
+    list
+      ? el('div', { className: 'form-group' },
+          el('label', { className: 'form-label' }, 'Assign people now'),
+          list
+        )
+      : null
+  );
+
+  const saveBtn = el('button', { className: 'btn btn-primary', type: 'button' }, mode === 'create' ? 'Create Team' : 'Save Team');
+  saveBtn.addEventListener('click', async () => {
+    const name = nameInput.value.trim();
+    if (!name) {
+      showError('Team name is required.');
+      return;
+    }
+
+    const selectedMembers = list
+      ? availablePeople.filter((person) => list.querySelector(`input[value="${person.id}"]`)?.checked)
+      : [];
+
+    await onSave({
+      name,
+      description: descriptionInput.value.trim(),
+      members: selectedMembers
+    });
+    closeModal();
+  });
+
+  openModal(
+    mode === 'create' ? 'Create New Team' : 'Edit Team',
+    form,
+    el('div', { className: 'btn-group' },
+      el('button', { className: 'btn btn-outline', type: 'button', onClick: closeModal }, 'Cancel'),
+      saveBtn
+    )
+  );
+}
+
+function openAssignPeopleModal({ team, availablePeople = [], onSave }) {
+  const picker = el('div', { className: 'team-member-picker' },
+    ...availablePeople.map((person) => el('label', { className: 'team-member-picker__item' },
+      el('input', { type: 'checkbox', value: person.id }),
+      el('div', {},
+        el('strong', {}, person.fullName),
+        el('span', {}, person.jobTitle || capitalize(person.appRole))
+      )
+    ))
+  );
+
+  const saveBtn = el('button', { className: 'btn btn-primary', type: 'button' }, 'Assign People');
+  saveBtn.addEventListener('click', async () => {
+    const selectedMembers = availablePeople.filter((person) => picker.querySelector(`input[value="${person.id}"]`)?.checked);
+    if (!selectedMembers.length) {
+      showError('Select at least one person to assign.');
+      return;
+    }
+
+    await onSave(selectedMembers);
+    closeModal();
+  });
+
+  openModal(
+    `Assign People · ${team.name}`,
+    el('div', {},
+      el('p', { style: 'margin-bottom:12px' }, 'Assigning people here is frontend-only for the demo and does not change the backend team table.'),
+      picker
+    ),
+    el('div', { className: 'btn-group' },
+      el('button', { className: 'btn btn-outline', type: 'button', onClick: closeModal }, 'Cancel'),
+      saveBtn
+    )
+  );
 }
 
 function personCard(member, onClick) {
@@ -187,7 +415,7 @@ function personCard(member, onClick) {
   );
 }
 
-async function openMemberDetailModal({ team, member, monthRange }) {
+async function openMemberDetailModal({ team, member }) {
   const body = el('div', { className: 'profile-modal-shell' });
   showLoading(body);
 
@@ -207,24 +435,21 @@ async function openMemberDetailModal({ team, member, monthRange }) {
     if (canInspectInDepth || isSelf) {
       requests.push(
         api.get(`/productivity-metrics?scope=individual&teamId=${team.id}${canInspectInDepth ? `&userId=${member.id}` : ''}`),
-        api.get(`/hours-logged?teamId=${team.id}${canInspectInDepth ? `&userId=${member.id}` : ''}&dateFrom=${monthRange.start}&dateTo=${monthRange.end}&limit=6`),
         api.get(`/tasks?teamId=${team.id}${canInspectInDepth ? `&assigneeUserId=${member.id}` : ''}&sortBy=urgency&sortOrder=asc&includeCompleted=true&page=1&limit=6`),
         api.get(`/goals?teamId=${team.id}${canInspectInDepth ? `&userId=${member.id}&scope=user` : ''}&sortBy=endDate&sortOrder=asc&includeCancelled=false&limit=6`)
       );
     }
 
-    const [productivityRes, hoursRes, tasksRes, goalsRes] = requests.length ? await Promise.all(requests) : [];
+    const [productivityRes, tasksRes, goalsRes] = requests.length ? await Promise.all(requests) : [];
     clearElement(body);
 
     const productivity = productivityRes?.data || {};
-    const hours = hoursRes?.data || {};
     const tasks = tasksRes?.data?.tasks || [];
     const goals = goalsRes?.data?.goals || [];
     const email = isSelf
       ? getUser().email
       : tasks.find((task) => task.assignment?.assigneeUserId === member.id)?.assignment?.assigneeEmail ||
         goals.find((goal) => goal.targetUser?.id === member.id)?.targetUser?.email ||
-        hours.hoursLogs?.find((entry) => entry.userId === member.id)?.userEmail ||
         null;
 
     body.appendChild(el('div', { className: 'profile-modal-header' },
@@ -247,12 +472,12 @@ async function openMemberDetailModal({ team, member, monthRange }) {
       return;
     }
 
-    if (productivity.rollups?.monthly || hours.summary || goals.length || tasks.length) {
+    if (productivity.rollups?.monthly || goals.length || tasks.length) {
       const monthly = productivity.rollups?.monthly || {};
       body.appendChild(el('div', { className: 'card-grid card-grid--dashboard', style: 'margin:18px 0' },
         summaryCard('Monthly tasks', formatNumber(monthly.taskCount || 0), 'Tasks in the current month window.'),
         summaryCard('Completed', formatNumber(monthly.completedTaskCount || 0), 'Completed tasks in the current month.'),
-        summaryCard('Logged hours', formatHours(hours.summary?.currentMonthHours || 0), 'Hours logged this month.'),
+        summaryCard('Open', formatNumber(monthly.openTaskCount || 0), 'Open tasks still in progress.'),
         summaryCard('Completion rate', formatPercent(monthly.completionRate || 0, 1), 'Task completion rate in the current month.')
       ));
     }
@@ -285,17 +510,13 @@ async function openMemberDetailModal({ team, member, monthRange }) {
           : emptyState('No user goals', 'No user-scoped goals were returned for this person.')
       ),
       detailCard(
-        'Recent hours',
-        hours.hoursLogs?.length
-          ? el('div', { className: 'breakdown-list' },
-              ...hours.hoursLogs.slice(0, 4).map((entry) => el('div', { className: 'breakdown-item' },
-                el('div', { className: 'breakdown-item__copy' },
-                  el('strong', {}, `${formatDate(entry.workDate)} · ${formatHours(entry.hours)}`),
-                  el('span', {}, entry.taskTitle || 'General work')
-                )
-              ))
-            )
-          : emptyState('No hours entries', 'No time entries were returned for this person.')
+        'Profile overview',
+        metricsPanel([
+          ['Team', team.name],
+          ['Role', capitalize(member.membershipRole || member.appRole)],
+          ['Completion rate', formatPercent(productivity.rollups?.monthly?.completionRate || 0, 1)],
+          ['Average progress', formatPercent(productivity.rollups?.monthly?.averageProgressPercent || 0, 1)]
+        ])
       )
     ));
 

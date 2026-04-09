@@ -3,6 +3,7 @@ import { isLoggedIn, isManager } from './auth.js';
 let routes = {};
 let currentCleanup = null;
 const publicRoutes = new Set(['/', '/login']);
+const retiredRoutes = new Set(['/hours']);
 
 export function register(path, handler) {
   routes[path] = handler;
@@ -27,6 +28,11 @@ export async function resolve() {
       const [k, v] = part.split('=');
       params[decodeURIComponent(k)] = decodeURIComponent(v || '');
     }
+  }
+
+  if (retiredRoutes.has(path)) {
+    window.location.hash = isLoggedIn() ? '#/dashboard' : '#/';
+    return;
   }
 
   if (!publicRoutes.has(path) && !isLoggedIn()) {

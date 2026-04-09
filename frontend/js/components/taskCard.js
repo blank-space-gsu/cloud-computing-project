@@ -32,7 +32,7 @@ function compactMeta(label, value, tone = '') {
   );
 }
 
-export function taskCard(task, { onEdit, onAssign, onDelete, showAssignee = false, variant = 'default' } = {}) {
+export function taskCard(task, { onEdit, onAssign, onDelete, onComplete, showAssignee = false, variant = 'default' } = {}) {
   const progressValue = Number(task.progressPercent ?? 0);
   const isOverdue = Boolean(task.isOverdue);
   const isDueSoon = Boolean(task.isDueSoon);
@@ -75,13 +75,13 @@ export function taskCard(task, { onEdit, onAssign, onDelete, showAssignee = fals
   const compactMetrics = el('div', { className: 'task-inline-metrics' },
     compactMeta('Due', task.dueAt ? formatDateTime(task.dueAt) : 'Not scheduled'),
     compactMeta('Time left', task.timeRemainingSeconds != null ? formatTimeRemaining(task.timeRemainingSeconds) : 'No deadline', isOverdue ? 'danger' : isDueSoon ? 'warning' : ''),
-    compactMeta('Estimated', task.estimatedHours != null ? formatHours(task.estimatedHours) : 'Not set')
+    compactMeta('Effort', task.estimatedHours != null ? formatHours(task.estimatedHours) : 'Not set')
   );
 
   const metrics = el('div', { className: 'task-metrics-grid' },
     metaCell('Deadline', task.dueAt ? formatDateTime(task.dueAt) : 'Not scheduled'),
     metaCell('Time left', task.timeRemainingSeconds != null ? formatTimeRemaining(task.timeRemainingSeconds) : 'No deadline'),
-    metaCell('Estimated', task.estimatedHours != null ? formatHours(task.estimatedHours) : 'Not set'),
+    metaCell('Effort', task.estimatedHours != null ? formatHours(task.estimatedHours) : 'Not set'),
     metaCell('Status', statusLabel(task.status))
   );
 
@@ -91,6 +91,9 @@ export function taskCard(task, { onEdit, onAssign, onDelete, showAssignee = fals
       : (task.description ? el('p', { className: 'task-note task-note--compact' }, task.description) : null),
     (() => {
       const actions = el('div', { className: 'task-actions' });
+      if (onComplete && task.status !== 'completed' && task.status !== 'cancelled') {
+        actions.appendChild(el('button', { className: 'btn btn-sm btn-primary', onClick: () => onComplete(task) }, 'Complete'));
+      }
       if (onEdit) actions.appendChild(el('button', { className: 'btn btn-sm btn-outline', onClick: () => onEdit(task) }, 'Edit'));
       if (onAssign && !task.assignment) actions.appendChild(el('button', { className: 'btn btn-sm btn-primary', onClick: () => onAssign(task) }, 'Assign'));
       if (onDelete) actions.appendChild(el('button', { className: 'btn btn-sm btn-danger', onClick: () => onDelete(task) }, 'Delete'));

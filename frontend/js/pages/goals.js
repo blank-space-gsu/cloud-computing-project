@@ -17,7 +17,7 @@ import {
   formatPercent,
   lastDayOfCurrentMonth
 } from '../utils/format.js';
-import { selectPreferredTeam } from '../utils/teams.js';
+import { getVisibleTeams, selectPreferredTeam } from '../utils/teams.js';
 
 export default async function goalsPage(container) {
   renderHeader('Goals & Quotas', isManager() ? 'Track team targets and quota progress' : 'Track your goals and shared team quotas');
@@ -53,7 +53,7 @@ export default async function goalsPage(container) {
     userSelect
   );
 
-  if (teams.length && (isManager() || teams.length > 1)) {
+  if (teams.length > 1) {
     teamSelect.value = state.teamId;
     teamSelect.addEventListener('change', async () => {
       state.teamId = teamSelect.value;
@@ -153,13 +153,15 @@ export default async function goalsPage(container) {
       const selectedTeam = teams.find((team) => team.id === state.teamId);
 
       content.append(
-        buildHero(summary, {
-          teamName: selectedTeam?.name || 'All visible goals',
-          teamDescription: selectedTeam?.description || '',
-          scope: state.scope,
-          status: state.status
-        }),
-        buildSummaryCards(summary),
+        el('div', { className: 'dashboard-top-split' },
+          buildHero(summary, {
+            teamName: selectedTeam?.name || 'All visible goals',
+            teamDescription: selectedTeam?.description || '',
+            scope: state.scope,
+            status: state.status
+          }),
+          summaryTableCard('At a glance', buildSummaryRows(summary))
+        ),
         buildUnitBreakdown(summary),
         buildChartGrid(data.charts || {}),
         buildGoalsBody(goals, {
@@ -176,7 +178,7 @@ export default async function goalsPage(container) {
 async function loadTeams() {
   try {
     const { data } = await api.get('/teams');
-    const teams = data.teams || [];
+    const teams = getVisibleTeams(data.teams || []);
     return isManager() ? teams.filter((team) => team.canManageTeam) : teams;
   } catch {
     return [];
@@ -212,19 +214,38 @@ function buildHero(summary, { teamName, teamDescription, scope, status }) {
   );
 }
 
-function buildSummaryCards(summary) {
+function buildSummaryRows(summary) {
   const targetTotal = !summary.hasMixedUnits && summary.primaryUnit
     ? formatCurrency(summary.totalTargetValue || 0, summary.primaryUnit)
     : `${formatNumber(summary.totalsByUnit?.length || 0)} unit groups`;
 
-  return el('div', { className: 'card-grid card-grid--dashboard' },
-    summaryCard('Total goals', formatNumber(summary.totalGoalCount || 0), 'All visible goals in the current filter.'),
-    summaryCard('Active goals', formatNumber(summary.activeGoalCount || 0), 'Targets still running.'),
-    summaryCard('Achieved goals', formatNumber(summary.achievedGoalCount || 0), 'Goals already meeting their target.'),
-    summaryCard('Open goals', formatNumber(summary.openGoalCount || 0), 'Goals still below target.'),
-    summaryCard('Average progress', formatPercent(summary.averageProgressPercent || 0, 1), 'Average completion across the current goal set.'),
-    summaryCard('Target total', targetTotal, summary.hasMixedUnits ? 'Totals are grouped by unit below.' : `Primary unit: ${summary.primaryUnit || 'USD'}`)
-  );
+  return [
+    {
+      label: 'Total goals',
+      value: formatNumber(summary.totalGoalCount || 0),
+      note: 'All visible goals in the current filter.'
+    },
+    {
+      label: 'Active goals',
+      value: formatNumber(summary.activeGoalCount || 0),
+      note: 'Targets still running.'
+    },
+    {
+      label: 'Achieved goals',
+      value: formatNumber(summary.achievedGoalCount || 0),
+      note: 'Goals already meeting their target.'
+    },
+    {
+      label: 'Average progress',
+      value: formatPercent(summary.averageProgressPercent || 0, 1),
+      note: 'Average completion across the current goal set.'
+    },
+    {
+      label: 'Target total',
+      value: targetTotal,
+      note: summary.hasMixedUnits ? 'Totals are grouped by unit below.' : `Primary unit: ${summary.primaryUnit || 'USD'}`
+    }
+  ];
 }
 
 function buildUnitBreakdown(summary) {
@@ -313,24 +334,31 @@ function buildGoalsBody(goals, { onEdit }) {
     .slice(0, 3);
 
   return el('div', { className: 'goals-shell' },
-    el('section', { className: 'dashboard-section card', style: 'margin-top:24px' },
-      el('div', { className: 'section-header section-header--stacked' },
-        el('div', {},
-          el('h3', { className: 'section-title' }, 'Goal spotlight'),
-          el('p', { className: 'section-subtitle' }, 'The next deadlines or highest-visibility quota targets.')
-        )
-      ),
-      el('div', { className: 'goal-spotlight-grid' }, ...spotlight.map((goal) => goalSpotlightCard(goal, onEdit)))
+    collapsibleSection(
+      'Goal spotlight',
+      'The next deadlines or highest-visibility quota targets.',
+      el('div', { className: 'goal-spotlight-grid' }, ...spotlight.map((goal) => goalSpotlightCard(goal, onEdit))),
+      false
     ),
-    el('section', { className: 'dashboard-section card', style: 'margin-top:24px' },
-      el('div', { className: 'section-header section-header--stacked' },
-        el('div', {},
-          el('h3', { className: 'section-title' }, 'All visible goals'),
-          el('p', { className: 'section-subtitle' }, 'Detailed cards for every goal in the current filter.')
-        )
-      ),
-      el('div', { className: 'goal-list goal-list--enhanced' }, ...goals.map((goal) => goalCard(goal, onEdit)))
+    collapsibleSection(
+      'All visible goals',
+      'Detailed cards for every goal in the current filter.',
+      el('div', { className: 'goal-list goal-list--enhanced' }, ...goals.map((goal) => goalCard(goal, onEdit))),
+      false
     )
+  );
+}
+
+function collapsibleSection(title, subtitle, body, open = false) {
+  return el('details', { className: 'dashboard-collapsible dashboard-section card', open },
+    el('summary', { className: 'dashboard-collapsible__summary' },
+      el('div', { className: 'dashboard-collapsible__copy' },
+        el('h3', { className: 'section-title' }, title),
+        el('p', { className: 'section-subtitle' }, subtitle)
+      ),
+      el('span', { className: 'dashboard-collapsible__icon', 'aria-hidden': 'true' })
+    ),
+    el('div', { className: 'dashboard-collapsible__body' }, body)
   );
 }
 
@@ -412,14 +440,6 @@ function goalCard(goal, onEdit) {
   );
 }
 
-function summaryCard(label, value, note) {
-  return el('div', { className: 'card dashboard-stat-card' },
-    el('div', { className: 'card-title' }, label),
-    el('div', { className: 'card-value' }, value),
-    el('div', { className: 'card-footer' }, note)
-  );
-}
-
 function chartCard(title, canvasId, subtitle) {
   return el('div', { className: 'chart-card chart-card--enhanced' },
     el('div', { className: 'chart-card__top' },
@@ -428,6 +448,30 @@ function chartCard(title, canvasId, subtitle) {
     ),
     el('div', { className: 'chart-container' },
       el('canvas', { id: canvasId })
+    )
+  );
+}
+
+function summaryTableCard(title, rows) {
+  return el('section', { className: 'card dashboard-summary-table-card' },
+    el('div', { className: 'section-header section-header--stacked' },
+      el('div', {},
+        el('h3', { className: 'section-title' }, title),
+        el('p', { className: 'section-subtitle' }, 'The most important goal metrics in one compact table.')
+      )
+    ),
+    el('div', { className: 'table-wrapper table-wrapper--compact' },
+      el('table', { className: 'dashboard-summary-table' },
+        el('tbody', {},
+          ...rows.map((row) => el('tr', {},
+            el('th', { scope: 'row', className: 'dashboard-summary-table__metric' },
+              el('div', { className: 'dashboard-summary-table__label' }, row.label),
+              el('span', { className: 'dashboard-summary-table__note' }, row.note)
+            ),
+            el('td', { className: 'dashboard-summary-table__value' }, row.value)
+          ))
+        )
+      )
     )
   );
 }

@@ -1,12 +1,11 @@
 import { restoreSession, isLoggedIn } from './auth.js';
 import { register, resolve, start } from './router.js';
-import { renderSidebar } from './components/sidebar.js';
+import { applySidebarState, renderSidebar } from './components/sidebar.js';
 import landingPage from './pages/landing.js';
 import loginPage from './pages/login.js';
 import dashboardPage from './pages/dashboard.js';
 import tasksPage from './pages/tasks.js';
 import teamsPage from './pages/teams.js';
-import hoursPage from './pages/hours.js';
 import productivityPage from './pages/productivity.js';
 import goalsPage from './pages/goals.js';
 import profilePage from './pages/profile.js';
@@ -17,7 +16,6 @@ register('/dashboard', dashboardPage);
 register('/tasks', tasksPage);
 register('/teams', teamsPage);
 register('/teams/:teamId', teamsPage);
-register('/hours', hoursPage);
 register('/productivity', productivityPage);
 register('/goals', goalsPage);
 register('/profile', profilePage);
@@ -46,5 +44,6 @@ async function init() {
 }
 
 window.addEventListener('hashchange', () => renderSidebar());
+window.addEventListener('resize', () => applySidebarState());
 
 init();

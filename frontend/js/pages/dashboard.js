@@ -1,29 +1,23 @@
 import { el, clearElement } from '../utils/dom.js';
-import { isManager, isEmployee, getUser } from '../auth.js';
+import { isEmployee, getUser } from '../auth.js';
 import * as api from '../api.js';
 import { renderHeader } from '../components/header.js';
 import { showLoading, hideLoading } from '../components/loading.js';
 import { emptyState } from '../components/emptyState.js';
-import { showError } from '../components/toast.js';
-import { doughnutChart, barChart, lineChart, STATUS_COLORS, PRIORITY_COLORS } from '../components/charts.js';
-import { taskCard } from '../components/taskCard.js';
+import { showError, showSuccess } from '../components/toast.js';
+import { doughnutChart, barChart, STATUS_COLORS } from '../components/charts.js';
 import {
   capitalize,
-  firstDayOfCurrentMonth,
   formatCompactNumber,
   formatCurrency,
-  formatDate,
   formatDateRange,
-  formatHours,
   formatNumber,
   formatPercent,
   formatShortDate,
-  formatTimeRemaining,
-  formatTrendLabel,
-  formatTrendTooltip,
-  lastDayOfCurrentMonth
+  statusLabel,
+  formatTimeRemaining
 } from '../utils/format.js';
-import { selectPreferredTeam } from '../utils/teams.js';
+import { getVisibleTeams, selectPreferredTeam } from '../utils/teams.js';
 
 export default async function dashboardPage(container) {
   const user = getUser();
@@ -40,82 +34,83 @@ export default async function dashboardPage(container) {
   } catch (err) {
     showError(err);
     hideLoading(container);
+    clearElement(container);
+    container.appendChild(emptyState('Unable to load dashboard', err.message || 'The dashboard could not be rendered right now.'));
   }
 }
 
 async function renderEmployeeDashboard(container) {
   const user = getUser();
-  const primaryTeamId = user.teams?.[0]?.teamId || null;
-  const monthRange = {
-    start: firstDayOfCurrentMonth(),
-    end: lastDayOfCurrentMonth()
-  };
 
-  const [
-    dashboardRes,
-    productivityRes,
-    goalsRes,
-    hoursRes,
-    tasksRes,
-    membersRes
-  ] = await Promise.all([
+  const [dashboardRes, goalsRes, tasksRes, teamsRes] = await Promise.all([
     api.get('/dashboards/employee'),
-    api.get('/productivity-metrics'),
-    api.get(`/goals?sortBy=endDate&sortOrder=asc&includeCancelled=false&limit=6`),
-    api.get(`/hours-logged?dateFrom=${monthRange.start}&dateTo=${monthRange.end}&limit=6`),
+    api.get('/goals?sortBy=endDate&sortOrder=asc&includeCancelled=false&limit=4'),
     api.get('/tasks?sortBy=urgency&sortOrder=asc&includeCompleted=false&page=1&limit=6'),
-    primaryTeamId ? api.get(`/teams/${primaryTeamId}/members`) : Promise.resolve({ data: { members: [] } })
+    api.get('/teams')
   ]);
 
   clearElement(container);
 
   const dashboard = dashboardRes.data;
-  const productivity = productivityRes.data;
   const goals = goalsRes.data;
-  const hours = hoursRes.data;
   const tasks = tasksRes.data.tasks || [];
-  const members = membersRes.data.members || [];
+  const summary = dashboard.summary || {};
+  const goalsSummary = goals.summary || {};
+  const preferredTeam = selectPreferredTeam(getVisibleTeams(teamsRes.data.teams || []));
 
   const hero = buildHero({
     eyebrow: 'Employee Overview',
-    title: 'Your weekly task command center',
-    description: 'Track deadlines, monitor your weekly completion, review hours, and keep goal progress visible in one place.',
+    title: 'Your task command center',
+    description: 'See the assignments, deadlines, and goal progress that matter most without extra clutter.',
     meta: [
-      pill(`Team · ${user.teams?.[0]?.teamName || 'No team'}`),
-      pill(`Tasks this week · ${dashboard.summary.currentWeekTaskCount || 0}`),
-      pill(`Month window · ${formatDateRange(monthRange.start, monthRange.end)}`)
-    ]
+      pill(`Team · ${preferredTeam?.name || user.teams?.[0]?.teamName || 'No team'}`),
+      pill(`Tasks this week · ${summary.currentWeekTaskCount || 0}`)
+    ],
+    className: 'page-hero page-hero--employee'
   });
 
-  const summary = dashboard.summary || {};
-  const monthlyRollup = productivity.rollups?.monthly || {};
-  const goalsSummary = goals.summary || {};
-  const hoursSummary = hours.summary || {};
+  const overview = el('div', { className: 'dashboard-top-split dashboard-top-split--employee' },
+    hero,
+    summaryTableCard('At a glance', [
+      {
+        label: 'Assigned tasks',
+        value: formatCompactNumber(summary.assignedTaskCount || 0),
+        note: 'Current work assigned to you.'
+      },
+      {
+        label: 'Completion rate',
+        value: formatPercent(summary.completionRate || 0, 1),
+        note: 'How much assigned work is already finished.'
+      },
+      {
+        label: 'Average progress',
+        value: formatPercent(summary.averageProgressPercent || 0, 1),
+        note: 'Progress across your active tasks.'
+      },
+      {
+        label: 'Tasks this month',
+        value: formatCompactNumber(summary.currentMonthTaskCount || 0),
+        note: 'Work counted in the current month window.'
+      },
+      {
+        label: 'Active goals',
+        value: formatCompactNumber(goalsSummary.activeGoalCount || 0),
+        note: 'Current goals visible to you.'
+      }
+    ])
+  );
 
-  const stats = metricGrid([
-    metricCard('Assigned tasks', formatCompactNumber(summary.assignedTaskCount || 0), 'Everything currently assigned to you.'),
-    metricCard('Completion rate', formatPercent(summary.completionRate || 0, 1), 'Share of assigned work already completed.'),
-    metricCard('Average progress', formatPercent(summary.averageProgressPercent || 0, 1), 'Average progress across your active tasks.'),
-    metricCard('Open estimated hours', formatHours(summary.openEstimatedHours || 0), 'Estimated effort still open right now.'),
-    metricCard('Logged this month', formatHours(hoursSummary.currentMonthHours || 0), 'Hours recorded during the current month.'),
-    metricCard('Active goals', formatCompactNumber(goalsSummary.activeGoalCount || 0), 'Visible team and user goals in your scope.')
-  ]);
+  const charts = el('div', { className: 'chart-grid chart-grid--dashboard' },
+    chartCard('Weekly task completion', 'dash-employee-weekly', 'See how your recent tasks are grouped by week.'),
+    chartCard('Task status mix', 'dash-employee-status', 'A quick view of what is waiting, active, or blocked.')
+  );
 
-  const snapshotStrip = rollupStrip('Performance snapshots', [
-    rollupItem('Weekly', productivity.rollups?.weekly),
-    rollupItem('Monthly', productivity.rollups?.monthly),
-    rollupItem('Yearly', productivity.rollups?.yearly)
-  ]);
-
-  const charts = el('div', { className: 'chart-grid chart-grid--dashboard' });
-  charts.appendChild(chartCard('Weekly task completion', 'dash-employee-weekly', 'See how your tasks are grouped by week start date.'));
   requestAnimationFrame(() => barChart(
     'dash-employee-weekly',
     (dashboard.charts?.byWeek || []).map((point) => formatShortDate(point.weekStartDate)),
     [{ label: 'Tasks', data: (dashboard.charts?.byWeek || []).map((point) => point.count), color: '#6366f1' }]
   ));
 
-  charts.appendChild(chartCard('Task status mix', 'dash-employee-status', 'A quick view of what is waiting, completed, or blocked.'));
   requestAnimationFrame(() => doughnutChart(
     'dash-employee-status',
     (dashboard.charts?.byStatus || []).map((item) => item.status),
@@ -123,44 +118,20 @@ async function renderEmployeeDashboard(container) {
     STATUS_COLORS
   ));
 
-  charts.appendChild(chartCard('Priority pressure', 'dash-employee-priority', 'High-priority work appears here first.'));
-  requestAnimationFrame(() => doughnutChart(
-    'dash-employee-priority',
-    (dashboard.charts?.byPriority || []).map((item) => item.priority),
-    (dashboard.charts?.byPriority || []).map((item) => item.count),
-    PRIORITY_COLORS
-  ));
-
-  charts.appendChild(trendChartCard({
-    title: 'Monthly productivity trend',
-    canvasId: 'dash-employee-trend',
-    subtitle: 'Completed tasks and logged hours across recent weeks.',
-    points: productivity.charts?.weeklyTrend || [],
-    datasets: [
-      { label: 'Completed Tasks', dataKey: 'completedTaskCount', color: '#22c55e' },
-      { label: 'Hours Logged', dataKey: 'loggedHours', color: '#06b6d4' }
-    ]
-  }));
-
   const sections = el('div', { className: 'dashboard-layout' },
-        stackedSection(
-          'My active tasks',
-          'Your prioritized task list for the current week.',
-          tasks.length
-            ? el('div', { className: 'task-list dashboard-task-list dashboard-task-list--compact' }, ...tasks.map((task) => taskCard(task, { variant: 'compact' })))
-            : emptyState('No active tasks', 'You do not have active tasks right now.')
-        ),
+    stackedSection(
+      'My active tasks',
+      'Your prioritized task list for the current week.',
+      tasks.length
+        ? buildTaskAccordionList(tasks, {
+            onComplete: (task) => quickCompleteTask(task, () => renderEmployeeDashboard(container))
+          })
+        : emptyState('No active tasks', 'You do not have active tasks right now.')
+    ),
     stackedSection(
       'Upcoming deadlines',
       'Ordered by urgency, with due pressure highlighted.',
       deadlineList(dashboard.tasks?.upcomingDeadlines || [])
-    ),
-    stackedSection(
-      'My team',
-      'The teammate roster for your primary team.',
-      members.length
-        ? el('div', { className: 'member-grid dashboard-member-grid' }, ...members.map((member) => memberCard(member)))
-        : emptyState('No team members', 'No team roster was returned for your current team.')
     ),
     stackedSection(
       'Goal spotlight',
@@ -168,41 +139,15 @@ async function renderEmployeeDashboard(container) {
       goals.goals?.length
         ? el('div', { className: 'goal-spotlight-grid' }, ...goals.goals.slice(0, 3).map(goalSpotlightCard))
         : emptyState('No goals yet', 'No goals are available for this employee profile.')
-    ),
-    stackedSection(
-      'Recent hours',
-      'Your latest time entries in the current month window.',
-      hours.hoursLogs?.length
-        ? miniTable(
-            ['Date', 'Task', 'Hours'],
-            hours.hoursLogs.slice(0, 5).map((entry) => [
-              formatDate(entry.workDate),
-              entry.taskTitle || 'General work',
-              formatHours(entry.hours)
-            ])
-          )
-        : emptyState('No hours logged', 'Hours entries will appear here once you start logging time.')
-    ),
-    stackedSection(
-      'Monthly productivity details',
-      'Key performance numbers based on task completion and logged hours.',
-      metricsPanel([
-        ['Tasks this month', formatNumber(monthlyRollup.taskCount || 0)],
-        ['Completed', formatNumber(monthlyRollup.completedTaskCount || 0)],
-        ['Open', formatNumber(monthlyRollup.openTaskCount || 0)],
-        ['Logged hours', formatHours(monthlyRollup.loggedHours || 0)],
-        ['Estimated hours', formatHours(monthlyRollup.estimatedHours || 0)],
-        ['Logged vs estimated', formatPercent(monthlyRollup.loggedVsEstimatedPercent || 0, 1)]
-      ])
     )
   );
 
-  container.append(hero, stats, snapshotStrip, charts, sections);
+  container.append(overview, charts, sections);
 }
 
 async function renderManagerDashboard(container) {
   const teamResponse = await api.get('/teams');
-  const teams = (teamResponse.data.teams || []).filter((team) => team.canManageTeam);
+  const teams = getVisibleTeams((teamResponse.data.teams || []).filter((team) => team.canManageTeam));
 
   clearElement(container);
 
@@ -213,25 +158,30 @@ async function renderManagerDashboard(container) {
 
   let selectedTeamId = selectPreferredTeam(teams)?.id || teams[0].id;
   const shell = el('div');
-  const controlBar = el('div', { className: 'filters-bar filters-bar--hero' });
-  const teamSelect = el('select', { className: 'form-select' },
-    ...teams.map((team) => el('option', { value: team.id }, team.name))
-  );
-  teamSelect.value = selectedTeamId;
-  teamSelect.addEventListener('change', async () => {
-    selectedTeamId = teamSelect.value;
-    await loadManagerData(selectedTeamId);
-  });
-
-  controlBar.appendChild(
-    el('div', { className: 'filter-group' },
-      el('label', {}, 'Team dashboard'),
-      teamSelect
-    )
-  );
-
   const content = el('div');
-  shell.append(controlBar, content);
+
+  if (teams.length > 1) {
+    const controlBar = el('div', { className: 'filters-bar filters-bar--hero' });
+    const teamSelect = el('select', { className: 'form-select' },
+      ...teams.map((team) => el('option', { value: team.id }, team.name))
+    );
+    teamSelect.value = selectedTeamId;
+    teamSelect.addEventListener('change', async () => {
+      selectedTeamId = teamSelect.value;
+      await loadManagerData(selectedTeamId);
+    });
+
+    controlBar.appendChild(
+      el('div', { className: 'filter-group' },
+        el('label', {}, 'Team dashboard'),
+        teamSelect
+      )
+    );
+
+    shell.appendChild(controlBar);
+  }
+
+  shell.appendChild(content);
   container.appendChild(shell);
 
   async function loadManagerData(teamId) {
@@ -239,23 +189,10 @@ async function renderManagerDashboard(container) {
     showLoading(content);
 
     try {
-      const monthRange = {
-        start: firstDayOfCurrentMonth(),
-        end: lastDayOfCurrentMonth()
-      };
-
-      const [
-        dashboardRes,
-        productivityRes,
-        goalsRes,
-        hoursRes,
-        tasksRes,
-        teamMembersRes
-      ] = await Promise.all([
+      const [dashboardRes, productivityRes, goalsRes, tasksRes, teamMembersRes] = await Promise.all([
         api.get(`/dashboards/manager?teamId=${teamId}`),
         api.get(`/productivity-metrics?scope=team&teamId=${teamId}`),
         api.get(`/goals?teamId=${teamId}&sortBy=endDate&sortOrder=asc&includeCancelled=false&limit=6`),
-        api.get(`/hours-logged?teamId=${teamId}&dateFrom=${monthRange.start}&dateTo=${monthRange.end}&limit=20`),
         api.get(`/tasks?teamId=${teamId}&sortBy=urgency&sortOrder=asc&includeCompleted=true&page=1&limit=6`),
         api.get(`/teams/${teamId}/members`)
       ]);
@@ -265,72 +202,78 @@ async function renderManagerDashboard(container) {
       const dashboard = dashboardRes.data;
       const productivity = productivityRes.data;
       const goals = goalsRes.data;
-      const hours = hoursRes.data;
       const tasks = tasksRes.data.tasks || [];
       const teamInfo = teamMembersRes.data.team || teams.find((team) => team.id === teamId);
       const mergedMembers = mergeMemberMetrics(teamMembersRes.data.members || [], productivity.breakdown?.members || []);
+      const employeeRows = mergedMembers.filter((member) => member.appRole === 'employee');
 
       const summary = dashboard.summary || {};
-      const monthlyRollup = productivity.rollups?.monthly || {};
       const goalsSummary = goals.summary || {};
-      const hoursSummary = hours.summary || {};
 
       const hero = buildHero({
         eyebrow: 'Manager Overview',
         title: teamInfo?.name || 'Team dashboard',
-        description: teamInfo?.description || 'Monitor assignment pressure, productivity, hours, and quota progress for the selected team.',
+        description: teamInfo?.description || 'Focus on assignment pressure, task progress, and the key team outcomes that matter.',
         meta: [
           pill(`Members · ${teamInfo?.memberCount || mergedMembers.length}`),
-          pill(`Manager view · ${capitalize(getUser().appRole)}`),
-          pill(`Month window · ${formatDateRange(monthRange.start, monthRange.end)}`)
-        ]
+          pill(`Overdue · ${summary.overdueTaskCount || 0}`),
+          pill(`Active goals · ${goalsSummary.activeGoalCount || 0}`)
+        ],
+        className: 'page-hero'
       });
 
-      const stats = metricGrid([
-        metricCard('Total tasks', formatCompactNumber(summary.totalTaskCount || 0), 'Tracked tasks in this team scope.'),
-        metricCard('Completion rate', formatPercent(summary.completionRate || 0, 1), 'Share of tasks already completed.'),
-        metricCard('Overdue tasks', formatCompactNumber(summary.overdueTaskCount || 0), 'Items already past their due date.', summary.overdueTaskCount ? 'danger' : null),
-        metricCard('Unassigned tasks', formatCompactNumber(summary.unassignedTaskCount || 0), 'Tasks still waiting for assignment.', summary.unassignedTaskCount ? 'warning' : null),
-        metricCard('Logged this month', formatHours(hoursSummary.currentMonthHours || 0), 'Hours recorded by the selected team.'),
-        metricCard('Open goals', formatCompactNumber(goalsSummary.openGoalCount || 0), 'Quota targets still in progress.'),
-        metricCard('Average progress', formatPercent(summary.averageProgressPercent || 0, 1), 'Average task progress across the team.'),
-        metricCard('Logged vs estimated', formatPercent(monthlyRollup.loggedVsEstimatedPercent || 0, 1), 'How logged time compares to estimated effort.')
-      ]);
+      const overview = el('div', { className: 'dashboard-top-split' },
+        hero,
+        summaryTableCard('At a glance', [
+          {
+            label: 'Total tasks',
+            value: formatCompactNumber(summary.totalTaskCount || 0),
+            note: 'Tracked tasks in this team scope.'
+          },
+          {
+            label: 'Completion rate',
+            value: formatPercent(summary.completionRate || 0, 1),
+            note: 'Share of tasks already completed.'
+          },
+          {
+            label: 'Overdue tasks',
+            value: formatCompactNumber(summary.overdueTaskCount || 0),
+            note: 'Items already past their due date.'
+          },
+          {
+            label: 'Unassigned tasks',
+            value: formatCompactNumber(summary.unassignedTaskCount || 0),
+            note: 'Tasks still waiting for assignment.'
+          },
+          {
+            label: 'Active goals',
+            value: formatCompactNumber(goalsSummary.activeGoalCount || 0),
+            note: 'Quota targets still in progress.'
+          },
+          {
+            label: 'Average progress',
+            value: formatPercent(summary.averageProgressPercent || 0, 1),
+            note: 'Average task progress across the team.'
+          }
+        ])
+      );
 
-      const charts = el('div', { className: 'chart-grid chart-grid--dashboard' });
-      charts.appendChild(chartCard('Workload by employee', 'dash-manager-workload', 'Assigned task counts by teammate.'));
+      const charts = el('div', { className: 'chart-grid chart-grid--dashboard' },
+        chartCard('Workload by employee', 'dash-manager-workload', 'Assigned task counts by teammate.'),
+        chartCard('Task status mix', 'dash-manager-status', 'Current task stages across the selected team.')
+      );
+
       requestAnimationFrame(() => barChart(
         'dash-manager-workload',
         (dashboard.charts?.workloadByEmployee || []).map((member) => member.fullName),
-        [
-          {
-            label: 'Assigned tasks',
-            data: (dashboard.charts?.workloadByEmployee || []).map((member) => member.assignedTaskCount),
-            color: '#6366f1'
-          }
-        ],
+        [{
+          label: 'Assigned tasks',
+          data: (dashboard.charts?.workloadByEmployee || []).map((member) => member.assignedTaskCount),
+          color: '#6366f1'
+        }],
         true
       ));
 
-      charts.appendChild(chartCard('Team productivity comparison', 'dash-manager-productivity', 'Completed tasks and logged hours for each teammate.'));
-      requestAnimationFrame(() => barChart(
-        'dash-manager-productivity',
-        mergedMembers.filter((member) => member.appRole === 'employee').map((member) => member.fullName),
-        [
-          {
-            label: 'Completed tasks',
-            data: mergedMembers.filter((member) => member.appRole === 'employee').map((member) => member.completedTaskCount || 0),
-            color: '#22c55e'
-          },
-          {
-            label: 'Hours logged',
-            data: mergedMembers.filter((member) => member.appRole === 'employee').map((member) => member.loggedHours || 0),
-            color: '#06b6d4'
-          }
-        ]
-      ));
-
-      charts.appendChild(chartCard('Task status mix', 'dash-manager-status', 'Current task stages across the selected team.'));
       requestAnimationFrame(() => doughnutChart(
         'dash-manager-status',
         (dashboard.charts?.byStatus || []).map((item) => item.status),
@@ -338,33 +281,25 @@ async function renderManagerDashboard(container) {
         STATUS_COLORS
       ));
 
-      charts.appendChild(trendChartCard({
-        title: 'Monthly trend',
-        canvasId: 'dash-manager-trend',
-        subtitle: 'Completed tasks and logged hours across recent weeks.',
-        points: productivity.charts?.weeklyTrend || [],
-        datasets: [
-          { label: 'Completed Tasks', dataKey: 'completedTaskCount', color: '#22c55e' },
-          { label: 'Hours Logged', dataKey: 'loggedHours', color: '#06b6d4' }
-        ]
-      }));
-
       const sections = el('div', { className: 'dashboard-layout' },
         stackedSection(
-          'Priority task board',
-          'The most urgent or visible tasks in the current team scope.',
+          'Priority tasks',
+          'The most urgent work in the current team scope.',
           tasks.length
-            ? el('div', { className: 'task-list dashboard-task-list dashboard-task-list--compact' }, ...tasks.map((task) => taskCard(task, { showAssignee: true, variant: 'compact' })))
+            ? buildTaskAccordionList(tasks, {
+                showAssignee: true,
+                onComplete: (task) => quickCompleteTask(task, () => loadManagerData(teamId))
+              })
             : emptyState('No tasks found', 'There are no tasks to show for this team.')
         ),
         stackedSection(
           'Upcoming deadlines',
-          'Ordered by urgency and due pressure.',
+          'The next due and overdue tasks that need attention.',
           deadlineList(dashboard.tasks?.upcomingDeadlines || [])
         ),
         stackedSection(
           'Team performance roster',
-          'Employee task volume, progress, and logged time in one place.',
+          'Employee task volume and progress in one place.',
           mergedMembers.length
             ? performanceRoster(mergedMembers)
             : emptyState('No roster data', 'No member data is available for this team yet.')
@@ -375,50 +310,23 @@ async function renderManagerDashboard(container) {
           goals.goals?.length
             ? el('div', { className: 'goal-spotlight-grid' }, ...goals.goals.slice(0, 3).map(goalSpotlightCard))
             : emptyState('No goals', 'No goals have been created for this team yet.')
-        ),
-        stackedSection(
-          'Recent hours activity',
-          'The most recent time entries from this team.',
-          hours.hoursLogs?.length
-            ? miniTable(
-                ['Date', 'Employee', 'Task', 'Hours'],
-                hours.hoursLogs.slice(0, 6).map((entry) => [
-                  formatDate(entry.workDate),
-                  entry.userFullName,
-                  entry.taskTitle || 'General work',
-                  formatHours(entry.hours)
-                ])
-              )
-            : emptyState('No hours entries', 'No hours were logged in the current range.')
-        ),
-        stackedSection(
-          'Monthly productivity details',
-          'Operational summary for the current month window.',
-          metricsPanel([
-            ['Tasks', formatNumber(monthlyRollup.taskCount || 0)],
-            ['Completed', formatNumber(monthlyRollup.completedTaskCount || 0)],
-            ['Open', formatNumber(monthlyRollup.openTaskCount || 0)],
-            ['Blocked', formatNumber(monthlyRollup.blockedTaskCount || 0)],
-            ['Urgent', formatNumber(monthlyRollup.urgentTaskCount || 0)],
-            ['Logged hours', formatHours(monthlyRollup.loggedHours || 0)],
-            ['Estimated hours', formatHours(monthlyRollup.estimatedHours || 0)],
-            ['Completion rate', formatPercent(monthlyRollup.completionRate || 0, 1)]
-          ])
         )
       );
 
-      content.append(hero, stats, charts, sections);
+      content.append(overview, charts, sections);
     } catch (err) {
       showError(err);
       hideLoading(content);
+      clearElement(content);
+      content.appendChild(emptyState('Unable to load team dashboard', err.message || 'This dashboard could not be loaded right now.'));
     }
   }
 
   await loadManagerData(selectedTeamId);
 }
 
-function buildHero({ eyebrow, title, description, meta = [] }) {
-  return el('section', { className: 'page-hero' },
+function buildHero({ eyebrow, title, description, meta = [], className = 'page-hero' }) {
+  return el('section', { className },
     el('div', { className: 'page-hero__content' },
       el('p', { className: 'page-hero__eyebrow' }, eyebrow),
       el('h2', { className: 'page-hero__title' }, title),
@@ -444,33 +352,100 @@ function metricCard(label, value, note, tone) {
   );
 }
 
-function rollupStrip(title, items) {
-  return el('section', { className: 'insight-strip' },
-    el('div', { className: 'insight-strip__header' },
-      el('h3', {}, title),
-      el('p', {}, 'Weekly, monthly, and yearly rollups from the productivity endpoint.')
+function summaryTableCard(title, rows) {
+  return el('section', { className: 'card dashboard-summary-table-card' },
+    el('div', { className: 'section-header section-header--stacked' },
+      el('div', {},
+        el('h3', { className: 'section-title' }, title),
+        el('p', { className: 'section-subtitle' }, 'The most important metrics for this workspace in one compact view.')
+      )
     ),
-    el('div', { className: 'insight-strip__grid' }, ...items)
-  );
-}
-
-function rollupItem(label, rollup = {}) {
-  return el('article', { className: 'rollup-card' },
-    el('p', { className: 'rollup-card__label' }, label),
-    el('div', { className: 'rollup-card__metrics' },
-      rollupMetric('Tasks', formatNumber(rollup.taskCount || 0)),
-      rollupMetric('Completed', formatNumber(rollup.completedTaskCount || 0)),
-      rollupMetric('Hours', formatHours(rollup.loggedHours || 0)),
-      rollupMetric('Rate', formatPercent(rollup.completionRate || 0, 1))
+    el('div', { className: 'table-wrapper table-wrapper--compact' },
+      el('table', { className: 'dashboard-summary-table' },
+        el('tbody', {},
+          ...rows.map((row) => el('tr', {},
+            el('th', { scope: 'row', className: 'dashboard-summary-table__metric' },
+              el('div', { className: 'dashboard-summary-table__label' }, row.label),
+              el('span', { className: 'dashboard-summary-table__note' }, row.note)
+            ),
+            el('td', { className: 'dashboard-summary-table__value' }, row.value)
+          ))
+        )
+      )
     )
   );
 }
 
-function rollupMetric(label, value) {
-  return el('div', { className: 'rollup-card__metric' },
-    el('span', {}, label),
-    el('strong', {}, value)
+function buildTaskAccordionList(tasks, { showAssignee = false, onComplete } = {}) {
+  return el('div', { className: 'task-accordion-list' },
+    ...tasks.map((task) => taskAccordionItem(task, { showAssignee, onComplete }))
   );
+}
+
+function taskAccordionItem(task, { showAssignee = false, onComplete } = {}) {
+  const progressValue = Number(task.progressPercent ?? 0);
+
+  return el('details', { className: 'task-accordion card' },
+    el('summary', { className: 'task-accordion__summary' },
+      el('div', { className: 'task-accordion__head' },
+        el('strong', { className: 'task-accordion__title' }, task.title),
+        el('div', { className: 'task-badges' },
+          el('span', { className: `badge badge-${task.status === 'completed' ? 'success' : task.status === 'blocked' ? 'warning' : task.status === 'in_progress' ? 'primary' : 'default'}` }, statusLabel(task.status)),
+          el('span', { className: `badge badge-priority-${task.priority || 'medium'}` }, capitalize(task.priority || 'medium'))
+        )
+      ),
+      el('div', { className: 'task-accordion__summary-meta' },
+        showAssignee ? el('span', {}, task.assignment?.assigneeFullName || 'Unassigned') : null,
+        el('span', { className: 'task-accordion__icon', 'aria-hidden': 'true' })
+      )
+    ),
+    el('div', { className: 'task-accordion__body' },
+      task.description ? el('p', { className: 'task-note' }, task.description) : null,
+      el('div', { className: 'task-inline-metrics', style: 'margin-top:12px' },
+        infoChip('Due', task.dueAt ? formatShortDate(task.dueAt) : 'Not scheduled'),
+        infoChip('Time left', task.timeRemainingSeconds != null ? formatTimeRemaining(task.timeRemainingSeconds) : 'No deadline'),
+        infoChip('Progress', formatPercent(progressValue, 0))
+      ),
+      el('div', { className: 'task-progress-block' },
+        el('div', { className: 'task-progress-row' },
+          el('span', { className: 'task-progress-title' }, 'Progress'),
+          el('span', { className: 'task-progress-value' }, formatPercent(progressValue, 0))
+        ),
+        el('div', { className: 'progress-bar-container progress-bar-container--lg' },
+          el('div', { className: 'progress-bar', style: `width:${Math.max(0, Math.min(progressValue, 100))}%` })
+        )
+      ),
+      task.status !== 'completed' && onComplete
+        ? el('div', { className: 'task-actions' },
+            el('button', {
+              className: 'btn btn-sm btn-primary',
+              type: 'button',
+              onClick: () => onComplete(task)
+            }, 'Mark Completed')
+          )
+        : null
+    )
+  );
+}
+
+function infoChip(label, value) {
+  return el('div', { className: 'task-inline-chip' },
+    el('span', { className: 'task-inline-chip__label' }, label),
+    el('strong', { className: 'task-inline-chip__value' }, value)
+  );
+}
+
+async function quickCompleteTask(task, reload) {
+  try {
+    await api.patch(`/tasks/${task.id}`, {
+      status: 'completed',
+      progressPercent: 100
+    });
+    showSuccess('Task marked completed.');
+    await reload();
+  } catch (err) {
+    showError(err);
+  }
 }
 
 function chartCard(title, canvasId, subtitle) {
@@ -480,45 +455,6 @@ function chartCard(title, canvasId, subtitle) {
       subtitle ? el('p', {}, subtitle) : null
     ),
     el('div', { className: 'chart-container' }, el('canvas', { id: canvasId }))
-  );
-}
-
-function trendChartCard({ title, canvasId, subtitle, points, datasets }) {
-  const hasActivity = points.some((point) =>
-    datasets.some((dataset) => Number(point?.[dataset.dataKey] || 0) > 0)
-  );
-
-  if (!points.length || !hasActivity) {
-    return emptyChartCard(title, subtitle, 'No activity to plot for this time range yet.');
-  }
-
-  const card = chartCard(title, canvasId, subtitle);
-  requestAnimationFrame(() => lineChart(
-    canvasId,
-    points.map((point) => formatTrendLabel(point.startDate, point.endDate)),
-    datasets.map((dataset) => ({
-      label: dataset.label,
-      data: points.map((point) => point?.[dataset.dataKey] || 0),
-      color: dataset.color
-    })),
-    {
-      tooltipTitles: points.map((point) => formatTrendTooltip(point.startDate, point.endDate)),
-      maxTicksLimit: 6
-    }
-  ));
-  return card;
-}
-
-function emptyChartCard(title, subtitle, message) {
-  return el('div', { className: 'chart-card chart-card--enhanced chart-card--empty' },
-    el('div', { className: 'chart-card__top' },
-      el('h3', {}, title),
-      subtitle ? el('p', {}, subtitle) : null
-    ),
-    el('div', { className: 'chart-card__empty' },
-      el('strong', {}, 'No trend yet'),
-      el('span', {}, message)
-    )
   );
 }
 
@@ -547,22 +483,10 @@ function deadlineList(tasks) {
       ),
       el('div', { className: 'deadline-item__meta' },
         el('span', { className: `badge badge-${task.isOverdue ? 'danger' : task.isDueSoon ? 'warning' : 'default'}` }, task.isOverdue ? 'Overdue' : task.isDueSoon ? 'Due Soon' : capitalize(task.status)),
-        el('span', {}, task.dueAt ? formatDate(task.dueAt) : 'No due date'),
+        el('span', {}, task.dueAt ? formatShortDate(task.dueAt) : 'No due date'),
         el('span', {}, formatTimeRemaining(task.timeRemainingSeconds))
       )
     ))
-  );
-}
-
-function memberCard(member) {
-  const initials = `${member.firstName?.charAt(0) || ''}${member.lastName?.charAt(0) || ''}` || '?';
-  return el('div', { className: 'member-card member-card--dashboard' },
-    el('div', { className: 'member-avatar' }, initials),
-    el('div', { className: 'member-info' },
-      el('h4', {}, member.fullName),
-      el('p', {}, member.jobTitle || capitalize(member.membershipRole || member.appRole)),
-      el('span', { className: `badge badge-${member.appRole === 'manager' ? 'primary' : 'info'}` }, capitalize(member.appRole))
-    )
   );
 }
 
@@ -585,28 +509,6 @@ function goalSpotlightCard(goal) {
       el('span', {}, `${formatPercent(goal.progressPercent || 0)} complete`),
       el('span', {}, formatDateRange(goal.startDate, goal.endDate))
     )
-  );
-}
-
-function miniTable(headers, rows) {
-  return el('div', { className: 'table-wrapper table-wrapper--mini' },
-    el('table', {},
-      el('thead', {},
-        el('tr', {}, ...headers.map((header) => el('th', {}, header)))
-      ),
-      el('tbody', {},
-        ...rows.map((row) => el('tr', {}, ...row.map((cell) => el('td', {}, cell))))
-      )
-    )
-  );
-}
-
-function metricsPanel(items) {
-  return el('div', { className: 'metrics-panel' },
-    ...items.map(([label, value]) => el('div', { className: 'metrics-panel__item' },
-      el('span', { className: 'metrics-panel__label' }, label),
-      el('strong', { className: 'metrics-panel__value' }, value)
-    ))
   );
 }
 
@@ -638,10 +540,10 @@ function performanceRoster(members) {
       el('div', { className: 'performance-roster__grid' },
         rosterStat('Tasks', formatNumber(member.taskCount || 0)),
         rosterStat('Completed', formatNumber(member.completedTaskCount || 0)),
-        rosterStat('Hours', formatHours(member.loggedHours || 0)),
-        rosterStat('Est. hours', formatHours(member.estimatedHours || 0)),
+        rosterStat('Open', formatNumber(member.openTaskCount || 0)),
+        rosterStat('Blocked', formatNumber(member.blockedTaskCount || 0)),
         rosterStat('Avg progress', formatPercent(member.averageProgressPercent || 0, 1)),
-        rosterStat('Logged vs est.', formatPercent(member.loggedVsEstimatedPercent || 0, 1))
+        rosterStat('Completion rate', formatPercent(member.completionRate || 0, 1))
       )
     ))
   );

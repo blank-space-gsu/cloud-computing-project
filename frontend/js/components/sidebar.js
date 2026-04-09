@@ -1,16 +1,49 @@
 import { el, clearElement } from '../utils/dom.js';
 import { getUser, isManager, logout } from '../auth.js';
 
+const SIDEBAR_STORAGE_KEY = 'taskflow-sidebar-collapsed';
+
 function navItems() {
   return [
     { path: '#/dashboard', label: 'Dashboard', icon: '📊' },
     { path: '#/tasks', label: 'Tasks', icon: '✅' },
     { path: '#/teams', label: isManager() ? 'Teams & People' : 'Teams', icon: '👥' },
-    { path: '#/hours', label: 'Hours', icon: '🕐' },
     { path: '#/productivity', label: 'Productivity', icon: '📈' },
     { path: '#/goals', label: 'Goals', icon: '🎯' },
     { path: '#/profile', label: 'Profile', icon: '🙍' }
   ];
+}
+
+export function isSidebarCollapsed() {
+  return localStorage.getItem(SIDEBAR_STORAGE_KEY) === 'true';
+}
+
+export function applySidebarState() {
+  const sidebar = document.getElementById('sidebar');
+  if (!sidebar) return;
+
+  if (window.innerWidth <= 768) {
+    document.body.classList.remove('sidebar-collapsed');
+    return;
+  }
+
+  document.body.classList.toggle('sidebar-collapsed', isSidebarCollapsed());
+  sidebar.classList.remove('open');
+}
+
+export function toggleSidebarVisibility() {
+  const sidebar = document.getElementById('sidebar');
+  if (!sidebar) return false;
+
+  if (window.innerWidth <= 768) {
+    sidebar.classList.toggle('open');
+    return sidebar.classList.contains('open');
+  }
+
+  const next = !isSidebarCollapsed();
+  localStorage.setItem(SIDEBAR_STORAGE_KEY, String(next));
+  applySidebarState();
+  return next;
 }
 
 export function renderSidebar() {
@@ -54,8 +87,9 @@ export function renderSidebar() {
 
   const hamburger = el('button', {
     className: 'sidebar-hamburger',
-    onClick: () => sidebar.classList.toggle('open')
+    onClick: toggleSidebarVisibility
   }, '☰');
 
   sidebar.append(hamburger, brand, nav, userSection);
+  applySidebarState();
 }

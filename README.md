@@ -168,8 +168,6 @@ The frontend currently uses the following stable backend surface:
 - Task assignment endpoint: `POST /api/v1/task-assignments`
 - Employee dashboard endpoint: `GET /api/v1/dashboards/employee`
 - Manager dashboard endpoint: `GET /api/v1/dashboards/manager`
-- Hours logged list endpoint: `GET /api/v1/hours-logged`
-- Hours logged create endpoint: `POST /api/v1/hours-logged`
 - Productivity metrics endpoint: `GET /api/v1/productivity-metrics`
 - Goals endpoint: `GET /api/v1/goals`
 - Goal create endpoint: `POST /api/v1/goals`

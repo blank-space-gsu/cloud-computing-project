@@ -8,8 +8,8 @@ const commonJourneys = [
     audience: 'Employees'
   },
   {
-    title: 'Track my hours and weekly output',
-    description: 'Log hours, check monthly totals, and review personal productivity trends in one place.',
+    title: 'Track my progress and goals',
+    description: 'Review personal completion trends, active goals, and current progress in one place.',
     audience: 'Employees'
   },
   {
@@ -32,7 +32,7 @@ const demoJourneys = [
   },
   {
     title: 'Employee demo experience',
-    description: 'Use the employee login to show personal tasks, profile details, hours, goals, and supervisor access.',
+    description: 'Use the employee login to show personal tasks, profile details, goals, and supervisor access.',
     audience: 'employee.one@cloudcomputing.local'
   },
   {
@@ -91,8 +91,8 @@ export default async function landingPage(container) {
         copy: 'Employees can review live assignments, due pressure, notes, and progress from the task dashboard.'
       },
       {
-        title: 'Find my logged hours and productivity',
-        copy: 'Employees can log time, review hours trends, and compare progress against estimated effort.'
+        title: 'Find my progress and goals',
+        copy: 'Employees can review completion trends, active goals, and the progress attached to their assigned work.'
       },
       {
         title: 'Review team performance and overdue work',
@@ -179,7 +179,7 @@ function buildHero({ onSignIn, onJump }) {
         el('button', { className: 'btn btn-outline btn-lg', type: 'button', onClick: () => onJump('landing-features') }, 'View Workflows')
       ),
       el('div', { className: 'landing-stat-row' },
-        landingStat('Employee workspace', 'Tasks, hours, profile, supervisors'),
+        landingStat('Employee workspace', 'Tasks, goals, profile, supervisors'),
         landingStat('Manager control', 'Dashboard, goals, roster, metrics'),
         landingStat('Role-based access', 'Clear entry points for employee and manager sign-in')
       )
@@ -190,11 +190,11 @@ function buildHero({ onSignIn, onJump }) {
         el('h3', {}, 'Built for daily workforce coordination'),
         el('p', {}, 'Employees and managers each get a focused workspace with the right tools for task tracking, time logging, team visibility, and progress monitoring.'),
         el('div', { className: 'landing-hero-card__chips' },
-          el('span', { className: 'badge badge-primary' }, 'Role-based views'),
-          el('span', { className: 'badge badge-success' }, 'Task tracking'),
-          el('span', { className: 'badge badge-warning' }, 'Hours & goals'),
-          el('span', { className: 'badge badge-info' }, 'Team visibility')
-        )
+        el('span', { className: 'badge badge-primary' }, 'Role-based views'),
+        el('span', { className: 'badge badge-success' }, 'Task tracking'),
+        el('span', { className: 'badge badge-warning' }, 'Goals & quotas'),
+        el('span', { className: 'badge badge-info' }, 'Team visibility')
+      )
       ),
       el('div', { className: 'landing-hero-note' },
         el('strong', {}, 'Sign-in guidance'),
@@ -248,7 +248,7 @@ function buildSupportRail() {
       el('h3', {}, 'User Login Help & Support'),
       el('div', { className: 'landing-support-block' },
         el('strong', {}, 'Employees'),
-        el('p', {}, 'Use the employee login to see personal tasks, hours, goals, supervisors, and your own profile details.')
+        el('p', {}, 'Use the employee login to see personal tasks, goals, supervisors, and your own profile details.')
       ),
       el('div', { className: 'landing-support-block' },
         el('strong', {}, 'Managers'),

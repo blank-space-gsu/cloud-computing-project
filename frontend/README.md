@@ -15,7 +15,6 @@ The current UI is presentation-ready for the class demo and stays frontend-only.
 - Employee dashboard with personal work, progress, and trend views
 - Tasks page with manager and employee task workflows
 - Goals page with target summaries and progress tracking
-- Hours page with logging and reporting views
 - Productivity page with charts and performance summaries
 - Teams and people directory views
 - Manager and employee profile pages
@@ -45,7 +44,6 @@ frontend/
 - `#/login` sign-in screen
 - `#/dashboard`
 - `#/tasks`
-- `#/hours`
 - `#/productivity`
 - `#/goals`
 - `#/teams`
@@ -102,8 +100,6 @@ Use the password stored in `backend/.env` as `DEMO_USER_PASSWORD`.
 - `POST /api/v1/task-assignments`
 - `GET /api/v1/dashboards/employee`
 - `GET /api/v1/dashboards/manager`
-- `GET /api/v1/hours-logged`
-- `POST /api/v1/hours-logged`
 - `GET /api/v1/productivity-metrics`
 - `GET /api/v1/goals`
 - `POST /api/v1/goals`
