@@ -1,5 +1,31 @@
 import { z } from "zod";
 
+const LOOPBACK_HOSTNAMES = ["localhost", "127.0.0.1", "[::1]"];
+
+const expandLoopbackOrigins = (origins) => {
+  const expandedOrigins = new Set(origins);
+
+  origins.forEach((origin) => {
+    try {
+      const parsedOrigin = new URL(origin);
+
+      if (!LOOPBACK_HOSTNAMES.includes(parsedOrigin.hostname)) {
+        return;
+      }
+
+      LOOPBACK_HOSTNAMES.forEach((hostname) => {
+        const aliasOrigin = new URL(origin);
+        aliasOrigin.hostname = hostname;
+        expandedOrigins.add(aliasOrigin.origin);
+      });
+    } catch {
+      expandedOrigins.add(origin);
+    }
+  });
+
+  return Array.from(expandedOrigins);
+};
+
 const appEnvSchema = z
   .object({
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -32,9 +58,11 @@ const appEnvSchema = z
   })
   .transform((values) => ({
     ...values,
-    frontendOrigins: values.FRONTEND_APP_ORIGIN.split(",")
-      .map((origin) => origin.trim())
-      .filter(Boolean),
+    frontendOrigins: expandLoopbackOrigins(
+      values.FRONTEND_APP_ORIGIN.split(",")
+        .map((origin) => origin.trim())
+        .filter(Boolean)
+    ),
     DATABASE_SSL_REJECT_UNAUTHORIZED: values.DATABASE_SSL_REJECT_UNAUTHORIZED ?? false
   }));
 

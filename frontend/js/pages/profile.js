@@ -136,13 +136,13 @@ function renderManagerProfile({ user, preferredTeam, leaders, roster, context, o
     el('div', { className: 'dashboard-layout' },
       sectionCard(
         'My profile details',
-        'Your account overview and a frontend-only profile editor preview.',
+        'Your account overview and backend-saved profile controls.',
         profileDetailsPanel({
           user,
           preferredTeam,
           supportLabel: 'Direct reports',
           supportValue: formatNumber(directReports),
-          photoAccess: 'You manage team photos',
+          photoAccess: 'Manager-controlled (planned)',
           directoryStatus: 'Roster visible',
           onProfileUpdated
         }),
@@ -181,7 +181,7 @@ function renderEmployeeProfile({ user, preferredTeam, leaders, teammates, contex
     el('div', { className: 'dashboard-layout' },
       sectionCard(
         'My profile details',
-        'Your own account, role, contact details, and profile editor preview.',
+        'Your own account, role, contact details, and backend-saved profile editor.',
         profileDetailsPanel({
           user,
           preferredTeam,
@@ -249,7 +249,7 @@ function profileActionCard(user, leaders) {
   return el('div', { className: 'profile-action-card' },
     el('h3', {}, 'Access & Actions'),
     el('p', {}, isManager()
-      ? 'You control employee photo and roster workflows once the backend endpoints are added.'
+      ? 'You can manage team rosters now; employee photo controls remain planned.'
       : 'Your profile photo is manager-controlled in the final build.'
     ),
     el('div', { className: 'profile-action-card__grid' },
