@@ -1,8 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  addTeamMemberForUser,
+  createTeamForUser,
   getTeamByIdForUser,
   listTeamMembersForUser,
-  listTeamsForUser
+  listTeamsForUser,
+  removeTeamMemberForUser,
+  updateTeamForUser
 } from "../../../src/services/team.service.js";
 
 const employeeUser = {
@@ -99,5 +103,138 @@ describe("team service", () => {
     expect(listMembers).toHaveBeenCalledWith({
       teamId: sampleTeam.id
     });
+  });
+
+  it("creates a team and assigns the creator as manager", async () => {
+    const insertTeam = vi.fn().mockResolvedValue(sampleTeam.id);
+    const addCreatorMembership = vi.fn().mockResolvedValue({});
+    const findTeam = vi.fn().mockResolvedValue(sampleTeam);
+
+    const result = await createTeamForUser(managerUser, sampleTeam, {
+      insertTeam,
+      addCreatorMembership,
+      findTeam
+    });
+
+    expect(insertTeam).toHaveBeenCalledWith({
+      name: sampleTeam.name,
+      description: sampleTeam.description
+    });
+    expect(addCreatorMembership).toHaveBeenCalledWith({
+      teamId: sampleTeam.id,
+      userId: managerUser.id,
+      membershipRole: "manager"
+    });
+    expect(result.name).toBe("Operations Team");
+  });
+
+  it("rejects team updates for employees", async () => {
+    await expect(
+      updateTeamForUser(employeeUser, sampleTeam.id, { name: "Updated Team" })
+    ).rejects.toMatchObject({
+      statusCode: 403,
+      code: "TEAM_UPDATE_FORBIDDEN"
+    });
+  });
+
+  it("adds a member and creates a team-added notification", async () => {
+    const findTeam = vi.fn().mockResolvedValue(sampleTeam);
+    const findMember = vi
+      .fn()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: "member-1",
+        fullName: "Ethan Employee",
+        membershipRole: "member"
+      });
+    const findUser = vi.fn().mockResolvedValue({
+      id: "member-1",
+      isActive: true
+    });
+    const insertTeamMember = vi.fn().mockResolvedValue({});
+    const notifyTeamAdded = vi.fn().mockResolvedValue({});
+
+    const result = await addTeamMemberForUser(
+      managerUser,
+      sampleTeam.id,
+      {
+        userId: "member-1",
+        membershipRole: "member"
+      },
+      {
+        findTeam,
+        findMember,
+        findUser,
+        insertTeamMember,
+        notifyTeamAdded
+      }
+    );
+
+    expect(insertTeamMember).toHaveBeenCalledWith({
+      teamId: sampleTeam.id,
+      userId: "member-1",
+      membershipRole: "member"
+    });
+    expect(notifyTeamAdded).toHaveBeenCalledWith({
+      userId: "member-1",
+      teamId: sampleTeam.id,
+      teamName: sampleTeam.name
+    });
+    expect(result.member.fullName).toBe("Ethan Employee");
+  });
+
+  it("rejects duplicate team memberships", async () => {
+    const findTeam = vi.fn().mockResolvedValue(sampleTeam);
+    const findMember = vi.fn().mockResolvedValue({
+      id: "member-1"
+    });
+
+    await expect(
+      addTeamMemberForUser(
+        managerUser,
+        sampleTeam.id,
+        {
+          userId: "member-1",
+          membershipRole: "member"
+        },
+        {
+          findTeam,
+          findMember
+        }
+      )
+    ).rejects.toMatchObject({
+      statusCode: 409,
+      code: "TEAM_MEMBERSHIP_EXISTS"
+    });
+  });
+
+  it("removes team members", async () => {
+    const findTeam = vi.fn().mockResolvedValue(sampleTeam);
+    const findMember = vi.fn().mockResolvedValue({
+      id: "member-1",
+      membershipRole: "member"
+    });
+    const removeTeamMember = vi.fn().mockResolvedValue({
+      team_id: sampleTeam.id,
+      user_id: "member-1",
+      membership_role: "member"
+    });
+
+    const result = await removeTeamMemberForUser(
+      managerUser,
+      sampleTeam.id,
+      "member-1",
+      {
+        findTeam,
+        findMember,
+        removeTeamMember
+      }
+    );
+
+    expect(removeTeamMember).toHaveBeenCalledWith({
+      teamId: sampleTeam.id,
+      userId: "member-1"
+    });
+    expect(result.userId).toBe("member-1");
   });
 });

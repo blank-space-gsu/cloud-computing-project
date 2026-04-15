@@ -1,10 +1,20 @@
 import { sendSuccess } from "../utils/apiResponse.js";
 import {
+  addTeamMemberForUser,
+  createTeamForUser,
   getTeamByIdForUser,
   listTeamMembersForUser,
-  listTeamsForUser
+  listTeamsForUser,
+  removeTeamMemberForUser,
+  updateTeamForUser
 } from "../services/team.service.js";
-import { teamIdParamsSchema } from "../validators/team.validator.js";
+import {
+  addTeamMemberBodySchema,
+  createTeamBodySchema,
+  teamIdParamsSchema,
+  teamMemberParamsSchema,
+  updateTeamBodySchema
+} from "../validators/team.validator.js";
 
 export const listMyTeams = async (request, response) => {
   const teams = await listTeamsForUser(request.auth.user);
@@ -42,5 +52,53 @@ export const listTeamMembers = async (request, response) => {
     meta: {
       count: result.members.length
     }
+  });
+};
+
+export const createTeamHandler = async (request, response) => {
+  const payload = createTeamBodySchema.parse(request.body);
+  const team = await createTeamForUser(request.auth.user, payload);
+
+  return sendSuccess(response, {
+    statusCode: 201,
+    message: "Team created successfully.",
+    data: {
+      team
+    }
+  });
+};
+
+export const updateTeamHandler = async (request, response) => {
+  const { teamId } = teamIdParamsSchema.parse(request.params);
+  const payload = updateTeamBodySchema.parse(request.body);
+  const team = await updateTeamForUser(request.auth.user, teamId, payload);
+
+  return sendSuccess(response, {
+    message: "Team updated successfully.",
+    data: {
+      team
+    }
+  });
+};
+
+export const addTeamMemberHandler = async (request, response) => {
+  const { teamId } = teamIdParamsSchema.parse(request.params);
+  const payload = addTeamMemberBodySchema.parse(request.body);
+  const result = await addTeamMemberForUser(request.auth.user, teamId, payload);
+
+  return sendSuccess(response, {
+    statusCode: 201,
+    message: "Team member added successfully.",
+    data: result
+  });
+};
+
+export const removeTeamMemberHandler = async (request, response) => {
+  const { teamId, userId } = teamMemberParamsSchema.parse(request.params);
+  const result = await removeTeamMemberForUser(request.auth.user, teamId, userId);
+
+  return sendSuccess(response, {
+    message: "Team member removed successfully.",
+    data: result
   });
 };

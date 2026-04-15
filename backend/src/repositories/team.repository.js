@@ -1,5 +1,7 @@
 import { getPool } from "../db/pool.js";
 
+const normalizeTimestamp = (value) => value?.toISOString?.() ?? value ?? null;
+
 const mapTeamSummary = (row) => ({
   id: row.id,
   name: row.name,
@@ -7,18 +9,21 @@ const mapTeamSummary = (row) => ({
   membershipRole: row.membership_role,
   memberCount: Number(row.member_count ?? 0),
   managerCount: Number(row.manager_count ?? 0),
-  createdAt: row.created_at?.toISOString?.() ?? row.created_at,
-  updatedAt: row.updated_at?.toISOString?.() ?? row.updated_at
+  createdAt: normalizeTimestamp(row.created_at),
+  updatedAt: normalizeTimestamp(row.updated_at)
 });
 
 const mapTeamMember = (row) => ({
   id: row.id,
+  email: row.email,
   firstName: row.first_name,
   lastName: row.last_name,
   fullName: `${row.first_name} ${row.last_name}`.trim(),
   jobTitle: row.job_title,
+  avatarUrl: row.avatar_url,
   appRole: row.app_role,
-  membershipRole: row.membership_role
+  membershipRole: row.membership_role,
+  isActive: row.is_active
 });
 
 const mapTeamMemberUser = (row) => ({
@@ -28,10 +33,27 @@ const mapTeamMemberUser = (row) => ({
   lastName: row.last_name,
   fullName: `${row.first_name} ${row.last_name}`.trim(),
   jobTitle: row.job_title,
+  avatarUrl: row.avatar_url,
   appRole: row.app_role,
   isActive: row.is_active,
   membershipRole: row.membership_role
 });
+
+const teamSummarySelect = `
+  t.id,
+  t.name,
+  t.description,
+  t.created_at,
+  t.updated_at,
+  viewer.membership_role,
+  count(distinct tm.user_id) as member_count,
+  count(
+    distinct case
+      when tm.membership_role = 'manager' then tm.user_id
+      else null
+    end
+  ) as manager_count
+`;
 
 export const upsertTeam = async (
   team,
@@ -66,19 +88,7 @@ export const listAccessibleTeams = async (
   const result = await pool.query(
     `
       select
-        t.id,
-        t.name,
-        t.description,
-        t.created_at,
-        t.updated_at,
-        viewer.membership_role,
-        count(distinct tm.user_id) as member_count,
-        count(
-          distinct case
-            when tm.membership_role = 'manager' then tm.user_id
-            else null
-          end
-        ) as manager_count
+        ${teamSummarySelect}
       from public.teams t
       left join public.team_members viewer
         on viewer.team_id = t.id
@@ -105,43 +115,31 @@ export const findAccessibleTeamById = async (
   { teamId, requestingUserId, isAdmin = false },
   { pool = getPool() } = {}
 ) => {
-    const result = await pool.query(
-      `
-        select
-          t.id,
-          t.name,
-          t.description,
-          t.created_at,
-          t.updated_at,
-          viewer.membership_role,
-          count(distinct tm.user_id) as member_count,
-          count(
-            distinct case
-              when tm.membership_role = 'manager' then tm.user_id
-              else null
-            end
-          ) as manager_count
-        from public.teams t
-        left join public.team_members viewer
-          on viewer.team_id = t.id
-          and viewer.user_id = $2
-        left join public.team_members tm
-          on tm.team_id = t.id
-        where
-          t.id = $1
-          and ($3::boolean = true or viewer.user_id is not null)
-        group by
-          t.id,
-          t.name,
-          t.description,
-          t.created_at,
-          t.updated_at,
-          viewer.membership_role
-      `,
-      [teamId, requestingUserId, isAdmin]
-    );
+  const result = await pool.query(
+    `
+      select
+        ${teamSummarySelect}
+      from public.teams t
+      left join public.team_members viewer
+        on viewer.team_id = t.id
+        and viewer.user_id = $2
+      left join public.team_members tm
+        on tm.team_id = t.id
+      where
+        t.id = $1
+        and ($3::boolean = true or viewer.user_id is not null)
+      group by
+        t.id,
+        t.name,
+        t.description,
+        t.created_at,
+        t.updated_at,
+        viewer.membership_role
+    `,
+    [teamId, requestingUserId, isAdmin]
+  );
 
-    return result.rows[0] ? mapTeamSummary(result.rows[0]) : null;
+  return result.rows[0] ? mapTeamSummary(result.rows[0]) : null;
 };
 
 export const listMembersForAccessibleTeam = async (
@@ -152,10 +150,13 @@ export const listMembersForAccessibleTeam = async (
     `
       select
         u.id,
+        u.email,
         u.first_name,
         u.last_name,
         u.job_title,
+        u.avatar_url,
         u.app_role,
+        u.is_active,
         tm.membership_role
       from public.team_members tm
       inner join public.users u
@@ -188,6 +189,7 @@ export const findTeamMemberUserById = async (
         u.first_name,
         u.last_name,
         u.job_title,
+        u.avatar_url,
         u.app_role,
         u.is_active,
         tm.membership_role
@@ -228,4 +230,109 @@ export const upsertTeamMember = async (
   );
 
   return result.rows[0];
+};
+
+export const createTeamRecord = async (
+  team,
+  { pool = getPool() } = {}
+) => {
+  const result = await pool.query(
+    `
+      insert into public.teams (
+        name,
+        description
+      )
+      values ($1, $2)
+      returning id
+    `,
+    [team.name, team.description ?? null]
+  );
+
+  return result.rows[0]?.id ?? null;
+};
+
+export const updateTeamById = async (
+  teamId,
+  patch,
+  { pool = getPool() } = {}
+) => {
+  const columnMap = {
+    name: "name",
+    description: "description"
+  };
+
+  const values = [];
+  const setClauses = [];
+
+  for (const [field, column] of Object.entries(columnMap)) {
+    if (!Object.hasOwn(patch, field)) {
+      continue;
+    }
+
+    values.push(patch[field]);
+    setClauses.push(`${column} = $${values.length}`);
+  }
+
+  if (setClauses.length === 0) {
+    return teamId;
+  }
+
+  values.push(teamId);
+
+  const result = await pool.query(
+    `
+      update public.teams
+      set
+        ${setClauses.join(", ")},
+        updated_at = timezone('utc', now())
+      where id = $${values.length}
+      returning id
+    `,
+    values
+  );
+
+  return result.rows[0]?.id ?? null;
+};
+
+export const createTeamMember = async (
+  membership,
+  { pool = getPool() } = {}
+) => {
+  const result = await pool.query(
+    `
+      insert into public.team_members (
+        team_id,
+        user_id,
+        membership_role
+      )
+      values ($1, $2, $3)
+      returning
+        team_id,
+        user_id,
+        membership_role
+    `,
+    [membership.teamId, membership.userId, membership.membershipRole]
+  );
+
+  return result.rows[0] ?? null;
+};
+
+export const deleteTeamMemberById = async (
+  { teamId, userId },
+  { pool = getPool() } = {}
+) => {
+  const result = await pool.query(
+    `
+      delete from public.team_members
+      where team_id = $1
+        and user_id = $2
+      returning
+        team_id,
+        user_id,
+        membership_role
+    `,
+    [teamId, userId]
+  );
+
+  return result.rows[0] ?? null;
 };

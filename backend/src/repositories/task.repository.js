@@ -447,3 +447,48 @@ export const createTaskAssignment = async (
 
   return result.rows[0]?.id ?? null;
 };
+
+export const listDueNotificationCandidatesForUser = async (
+  { userId },
+  { pool = getPool() } = {}
+) => {
+  const result = await pool.query(
+    `
+      select
+        t.id,
+        t.team_id,
+        team.name as team_name,
+        t.title,
+        t.status,
+        t.due_at
+      from public.tasks t
+      inner join public.teams team
+        on team.id = t.team_id
+      inner join public.task_assignments active_assignment
+        on active_assignment.task_id = t.id
+        and active_assignment.is_active = true
+      where active_assignment.assignee_user_id = $1
+        and t.due_at is not null
+        and t.status not in ('completed', 'cancelled')
+        and t.due_at <= timezone('utc', now()) + interval '48 hours'
+      order by t.due_at asc
+    `,
+    [userId]
+  );
+
+  return result.rows.map((row) => {
+    const dueAt = normalizeTimestamp(row.due_at);
+    const dueAtMs = dueAt ? Date.parse(dueAt) : null;
+    const now = Date.now();
+
+    return {
+      id: row.id,
+      teamId: row.team_id,
+      teamName: row.team_name,
+      title: row.title,
+      status: row.status,
+      dueAt,
+      isOverdue: dueAtMs !== null && dueAtMs < now
+    };
+  });
+};

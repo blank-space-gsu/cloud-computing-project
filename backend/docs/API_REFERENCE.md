@@ -111,6 +111,9 @@ No authentication required.
       "lastName": "Manager",
       "fullName": "Maya Manager",
       "jobTitle": "Operations Manager",
+      "dateOfBirth": null,
+      "address": null,
+      "avatarUrl": null,
       "appRole": "manager",
       "isActive": true,
       "teams": [
@@ -217,6 +220,9 @@ Bearer token required.
       "lastName": "Manager",
       "fullName": "Maya Manager",
       "jobTitle": "Operations Manager",
+      "dateOfBirth": null,
+      "address": null,
+      "avatarUrl": null,
       "appRole": "manager",
       "isActive": true,
       "teams": []
@@ -227,6 +233,61 @@ Bearer token required.
   }
 }
 ```
+
+### `PATCH /api/v1/users/me`
+
+**Purpose**
+Allows the authenticated user to update their own profile-only fields.
+
+**Editable fields**
+
+- `firstName`
+- `lastName`
+- `jobTitle`
+- `dateOfBirth`
+- `address`
+
+**Notes**
+
+- `appRole`, `email`, `avatarUrl`, and `isActive` are not self-editable here
+- `dateOfBirth` must use `YYYY-MM-DD` and cannot be in the future
+
+### `GET /api/v1/users`
+
+**Purpose**
+Manager/admin people-directory endpoint for team-management flows.
+
+**Auth**
+Bearer token required, role must be `manager` or `admin`.
+
+**Query params**
+
+- `role` optional, such as `employee`
+- `teamId` optional
+- `search` optional
+- `includeInactive` optional, defaults to `false`
+
+### `POST /api/v1/users`
+
+**Purpose**
+Manager/admin employee creation flow that creates the Supabase auth user, application profile, and initial team membership.
+
+**Auth**
+Bearer token required, role must be `manager` or `admin`.
+
+**Notes**
+
+- the backend always creates these records with `appRole = employee`
+- managers can only create employees for teams they manage
+- `avatarUrl` is stored as a URL string, not a binary upload
+
+### `PATCH /api/v1/users/:userId/avatar`
+
+**Purpose**
+Manager/admin avatar update endpoint for URL-based profile photos.
+
+**Auth**
+Bearer token required, role must be `manager` or `admin`.
 
 ## Teams
 
@@ -271,6 +332,26 @@ Bearer token required.
   }
 }
 ```
+
+### `POST /api/v1/teams`
+
+**Purpose**
+Creates a persisted team record.
+
+**Auth**
+Bearer token required, role must be `manager` or `admin`.
+
+**Notes**
+
+- the creating manager/admin is automatically added to the team with `membershipRole = manager`
+
+### `PATCH /api/v1/teams/:teamId`
+
+**Purpose**
+Updates a team name and/or description for a manageable team.
+
+**Auth**
+Bearer token required, role must be `manager` or `admin`.
 
 ### `GET /api/v1/teams/:teamId`
 
@@ -318,12 +399,15 @@ Bearer token required.
     "members": [
       {
         "id": "uuid",
+        "email": "manager.demo@cloudcomputing.local",
         "firstName": "Maya",
         "lastName": "Manager",
         "fullName": "Maya Manager",
         "jobTitle": "Operations Manager",
+        "avatarUrl": null,
         "appRole": "manager",
-        "membershipRole": "manager"
+        "membershipRole": "manager",
+        "isActive": true
       }
     ]
   },
@@ -340,16 +424,75 @@ Bearer token required.
 - `401 UNAUTHORIZED`
 - `404 TEAM_NOT_FOUND`
 
+### `POST /api/v1/teams/:teamId/members`
+
+**Purpose**
+Adds a team membership that persists in `team_members`.
+
+**Auth**
+Bearer token required, role must be `manager` or `admin`.
+
+**Notes**
+
+- duplicate memberships return `409 TEAM_MEMBERSHIP_EXISTS`
+- non-admin managers can only add regular members
+- a `team_added` notification is created immediately for the added user
+
+### `DELETE /api/v1/teams/:teamId/members/:userId`
+
+**Purpose**
+Removes a team membership.
+
+**Auth**
+Bearer token required, role must be `manager` or `admin`.
+
+**Notes**
+
+- non-admin managers can remove regular members from teams they manage
+- manager membership removal remains admin-only
+- teams must retain at least one manager
+
 ## Frontend Integration Notes
 
 - Store `accessToken` and `refreshToken` returned by login.
 - Send `Authorization: Bearer <accessToken>` on protected requests.
 - Use `appRole` from the login or `/auth/me` response to branch the UI between employee and manager experiences.
 - Use `/users/me` when the frontend wants a user-centric route namespace.
+- Use `PATCH /users/me` for self-service profile editing.
+- Use `GET /users` for manager/admin people pickers and directory search.
+- Use `PATCH /users/:userId/avatar` for manager/admin avatar URL updates.
 - Use `/teams` and `/teams/:teamId/members` to build team selectors and roster cards.
+- Team roster payloads now include `email`, `avatarUrl`, and `isActive`.
 - Use `/tasks` for task lists, filtering, and urgency sorting.
 - Use `/task-assignments` for manager-driven assignment actions.
+- Use `/notifications` for persistent backend-backed notifications.
 - Expect all API errors to be JSON, not HTML.
+
+## Notifications
+
+### `GET /api/v1/notifications`
+
+**Purpose**
+Returns persistent notifications for the authenticated user plus an unread count.
+
+**Auth**
+Bearer token required.
+
+**Response notes**
+
+- `data.notifications` is the current page of notifications
+- `data.unreadCount` counts unread and not-dismissed items across the user’s notification set
+- due-soon and overdue task alerts are generated lazily when this endpoint is read and are then persisted with deduping
+
+### `PATCH /api/v1/notifications/:notificationId/read`
+
+**Purpose**
+Marks a notification as read for the authenticated user.
+
+### `DELETE /api/v1/notifications/:notificationId`
+
+**Purpose**
+Soft-dismisses a notification for the authenticated user by setting `dismissedAt`.
 
 ## Tasks
 

@@ -99,6 +99,9 @@ Stores application profile data for users whose identities live in `auth.users`.
 | `first_name` | `text` | No | none | Employee or manager first name |
 | `last_name` | `text` | No | none | Employee or manager last name |
 | `job_title` | `text` | Yes | `null` | Position label for dashboards |
+| `date_of_birth` | `date` | Yes | `null` | Optional profile-only birth date for self-service profile editing |
+| `address` | `text` | Yes | `null` | Optional profile-only mailing or street address |
+| `avatar_url` | `text` | Yes | `null` | URL-based avatar field used by roster/profile views |
 | `app_role` | `public.app_role` | No | `'employee'` | Global application role |
 | `is_active` | `boolean` | No | `true` | Soft-active flag |
 | `created_at` | `timestamptz` | No | `timezone('utc', now())` | Audit timestamp |
@@ -116,6 +119,9 @@ Stores application profile data for users whose identities live in `auth.users`.
 **Check constraints**
 - `char_length(trim(first_name)) > 0`
 - `char_length(trim(last_name)) > 0`
+- `date_of_birth is null or date_of_birth <= current_date`
+- `address is null or char_length(address) <= 500`
+- `avatar_url is null or char_length(trim(avatar_url)) > 0`
 
 **Recommended indexes**
 - unique index on `email`
@@ -258,6 +264,43 @@ Tracks which user currently owns a task while preserving reassignment history.
 
 **Check constraints**
 - active assignments must not have `unassigned_at`
+
+### `public.notifications`
+
+**Purpose**
+Stores user-targeted in-app notifications for team membership changes and task due reminders.
+
+| Column | Type | Null | Default | Notes |
+| --- | --- | --- | --- | --- |
+| `id` | `uuid` | No | `extensions.gen_random_uuid()` | Primary key |
+| `user_id` | `uuid` | No | none | Notification recipient |
+| `type` | `text` | No | none | Notification type such as `team_added`, `task_due_soon`, or `task_overdue` |
+| `title` | `text` | No | none | Short notification headline |
+| `message` | `text` | No | none | Notification body copy |
+| `task_id` | `uuid` | Yes | `null` | Optional task reference |
+| `team_id` | `uuid` | Yes | `null` | Optional team reference |
+| `dedupe_key` | `text` | Yes | `null` | Optional idempotency key for lazy-generated due alerts |
+| `read_at` | `timestamptz` | Yes | `null` | Set when the user opens or marks the notification read |
+| `dismissed_at` | `timestamptz` | Yes | `null` | Set when the user archives the notification |
+| `created_at` | `timestamptz` | No | `timezone('utc', now())` | Audit timestamp |
+| `updated_at` | `timestamptz` | No | `timezone('utc', now())` | Audit timestamp |
+
+**Primary key**
+- `id`
+
+**Foreign keys**
+- `user_id -> users(id)` on delete cascade
+- `task_id -> tasks(id)` on delete set null
+- `team_id -> teams(id)` on delete set null
+
+**Unique constraints**
+- partial unique index on `dedupe_key` when it is not null
+
+**Recommended indexes**
+- index on (`user_id`, `created_at desc`)
+- index on (`user_id`, `read_at`, `dismissed_at`)
+- index on `task_id`
+- index on `team_id`
 - inactive assignments must have `unassigned_at`
 
 **Recommended indexes**

@@ -9,7 +9,12 @@ Stable today:
 - authenticated current-user loading
 - role-aware UI branching for employee vs manager
 - user profile loading through `/users/me`
+- self-profile editing through `PATCH /users/me`
+- manager avatar updates through `PATCH /users/:userId/avatar`
 - team list and team roster loading
+- team creation and editing
+- persistent team membership changes
+- people directory loading for manager workflows
 - task creation for managers
 - task assignment for managers
 - employee task list loading
@@ -20,11 +25,13 @@ Stable today:
 - hours summary widgets
 - productivity summary cards and trend charts
 - goals and quota progress widgets
+- notification list, read, and dismiss flows
 - global loading and error handling based on the shared response envelope
 
 Still in progress:
 
-- no blocking backend gaps remain in the planned roadmap
+- binary profile-photo upload infrastructure is not implemented; avatar support is URL-based today
+- due-soon task notifications are generated lazily when `/notifications` is read instead of through a background scheduler
 
 ## Base API Settings
 
@@ -41,9 +48,17 @@ Still in progress:
 | `GET` | `/api/v1/auth/me` | Yes | Load the logged-in user after storing tokens |
 | `GET` | `/api/v1/auth/manager-access` | Optional | Manager-role verification endpoint for protected manager UI checks |
 | `GET` | `/api/v1/users/me` | Yes | User-profile namespaced endpoint |
+| `PATCH` | `/api/v1/users/me` | Yes | Self-editable profile fields: `firstName`, `lastName`, `jobTitle`, `dateOfBirth`, `address` |
+| `GET` | `/api/v1/users` | Yes | Manager/admin people directory with optional `role`, `teamId`, `search`, and `includeInactive` filters |
+| `POST` | `/api/v1/users` | Yes | Manager/admin employee creation flow with auth user, app profile, and team membership |
+| `PATCH` | `/api/v1/users/:userId/avatar` | Yes | Manager/admin avatar URL update endpoint |
 | `GET` | `/api/v1/teams` | Yes | Load visible teams for the authenticated user |
+| `POST` | `/api/v1/teams` | Yes | Manager/admin team creation endpoint |
 | `GET` | `/api/v1/teams/:teamId` | Yes | Load team detail within user scope |
+| `PATCH` | `/api/v1/teams/:teamId` | Yes | Manager/admin team update endpoint |
 | `GET` | `/api/v1/teams/:teamId/members` | Yes | Load the basic roster for a visible team |
+| `POST` | `/api/v1/teams/:teamId/members` | Yes | Manager/admin team membership add endpoint |
+| `DELETE` | `/api/v1/teams/:teamId/members/:userId` | Yes | Manager/admin team membership remove endpoint |
 | `GET` | `/api/v1/tasks` | Yes | Load scoped task lists with filters and pagination metadata |
 | `POST` | `/api/v1/tasks` | Yes | Manager/admin task creation endpoint |
 | `GET` | `/api/v1/tasks/:taskId` | Yes | Load task detail within actor scope |
@@ -58,6 +73,19 @@ Still in progress:
 | `GET` | `/api/v1/goals` | Yes | Load visible goals plus quota summary metadata |
 | `POST` | `/api/v1/goals` | Yes | Manager/admin goal creation endpoint |
 | `PATCH` | `/api/v1/goals/:goalId` | Yes | Manager/admin goal update endpoint |
+| `GET` | `/api/v1/notifications` | Yes | Load persistent notifications with unread count |
+| `PATCH` | `/api/v1/notifications/:notificationId/read` | Yes | Mark a notification as read |
+| `DELETE` | `/api/v1/notifications/:notificationId` | Yes | Dismiss a notification |
+
+## New Integration Notes
+
+- `auth/me` and `users/me` now include `dateOfBirth`, `address`, and `avatarUrl` when available.
+- `teams/:teamId/members` now includes `email`, `avatarUrl`, and `isActive` for roster/detail modals.
+- Avatar support is URL-based in this phase. The backend stores `avatarUrl`; it does not accept multipart file uploads.
+- `POST /api/v1/users` always creates `appRole: "employee"` from the backend side. The frontend should not send or expect arbitrary role creation.
+- Manager membership promotion/demotion is intentionally stricter than normal membership edits. Non-admin managers can add and remove regular members, but manager memberships remain admin-controlled.
+- `GET /api/v1/notifications` returns `data.notifications` and `data.unreadCount`.
+- Due-soon notifications are generated lazily when the notifications list is loaded, then persisted with deduping. Team-added notifications are created immediately when a membership is added.
 
 ## Login Flow
 

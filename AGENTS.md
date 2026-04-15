@@ -15,7 +15,7 @@ cloud-computing-project/
 ```
 
 - `backend/` contains the Node.js + Express API.
-- `frontend/` is reserved for the separate frontend implementation.
+- `frontend/` contains the static SPA implementation used for the class demo.
 
 ## Current Backend Status
 
@@ -35,7 +35,7 @@ Completed:
 Optional next work:
 
 - task comments and activity history
-- notifications and reminders
+- richer reminder delivery (email/push or scheduled jobs)
 - file attachments
 
 ## Backend Stack
@@ -139,9 +139,17 @@ supabase db push
 - `GET /api/v1/auth/me`
 - `GET /api/v1/auth/manager-access`
 - `GET /api/v1/users/me`
+- `PATCH /api/v1/users/me`
+- `GET /api/v1/users`
+- `POST /api/v1/users`
+- `PATCH /api/v1/users/:userId/avatar`
 - `GET /api/v1/teams`
+- `POST /api/v1/teams`
 - `GET /api/v1/teams/:teamId`
+- `PATCH /api/v1/teams/:teamId`
 - `GET /api/v1/teams/:teamId/members`
+- `POST /api/v1/teams/:teamId/members`
+- `DELETE /api/v1/teams/:teamId/members/:userId`
 - `GET /api/v1/tasks`
 - `POST /api/v1/tasks`
 - `GET /api/v1/tasks/:taskId`
@@ -156,6 +164,9 @@ supabase db push
 - `GET /api/v1/goals`
 - `POST /api/v1/goals`
 - `PATCH /api/v1/goals/:goalId`
+- `GET /api/v1/notifications`
+- `PATCH /api/v1/notifications/:notificationId/read`
+- `DELETE /api/v1/notifications/:notificationId`
 
 All responses use the standard success/error JSON envelope documented in the backend docs.
 
@@ -192,5 +203,5 @@ The planned roadmap is complete. If the team wants to extend the project, the be
 
 - task comments and task activity history
 - file attachments
-- notification reminders for due and overdue tasks
+- richer notification delivery for due and overdue tasks
 - export-ready manager reporting

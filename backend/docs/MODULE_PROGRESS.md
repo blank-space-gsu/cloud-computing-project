@@ -1,6 +1,6 @@
 # Module Progress
 
-Last updated: March 26, 2026
+Last updated: April 9, 2026
 
 ## Phase Board
 
@@ -16,6 +16,7 @@ Last updated: March 26, 2026
 | Phase 7 - Productivity metrics | Complete | `npm test` passed and live productivity metrics verification succeeded on March 26, 2026 | Frontend can now build richer productivity rollups, trends, and team comparison charts | Weekly, monthly, and yearly rollups plus chart-ready trend data are in place |
 | Phase 8 - Goals and quotas | Complete | `npm test` passed, `supabase db push` succeeded, and live goals verification succeeded on March 26, 2026 | Frontend can now build quota progress cards, goal lists, and manager goal-management forms | Generic goals schema and sales quota support are in place |
 | Phase 9 - Hardening + deployment | Complete | `npm test` passed, smoke verification succeeded, and deployment artifacts were added on March 26, 2026 | Frontend can now receive a deployment-ready backend handoff with a stable Render setup path | Smoke script, deployment guide, and Render Blueprint are in place |
+| Phase 10 - Frontend support extensions | Complete | `npm test` passed with 140/140 tests on April 9, 2026 | Frontend can now save profile edits, create employees and teams, manage memberships, render richer roster cards, and consume backend-backed notifications | Avatar support is URL-based and due-soon notifications are generated lazily on read |
 
 ## Current Stable Backend Contracts
 
@@ -27,6 +28,14 @@ These items are safe for the frontend team to build against now:
 - login endpoint: `POST /api/v1/auth/login`
 - current-user endpoint: `GET /api/v1/auth/me`
 - manager-role verification endpoint: `GET /api/v1/auth/manager-access`
+- self-profile update endpoint: `PATCH /api/v1/users/me`
+- people directory endpoint: `GET /api/v1/users`
+- employee creation endpoint: `POST /api/v1/users`
+- avatar update endpoint: `PATCH /api/v1/users/:userId/avatar`
+- team create endpoint: `POST /api/v1/teams`
+- team update endpoint: `PATCH /api/v1/teams/:teamId`
+- team membership add endpoint: `POST /api/v1/teams/:teamId/members`
+- team membership remove endpoint: `DELETE /api/v1/teams/:teamId/members/:userId`
 - task list endpoint: `GET /api/v1/tasks`
 - task create endpoint: `POST /api/v1/tasks`
 - task detail endpoint: `GET /api/v1/tasks/:taskId`
@@ -41,6 +50,9 @@ These items are safe for the frontend team to build against now:
 - goals endpoint: `GET /api/v1/goals`
 - goal create endpoint: `POST /api/v1/goals`
 - goal update endpoint: `PATCH /api/v1/goals/:goalId`
+- notifications endpoint: `GET /api/v1/notifications`
+- notification read endpoint: `PATCH /api/v1/notifications/:notificationId/read`
+- notification dismiss endpoint: `DELETE /api/v1/notifications/:notificationId`
 - success envelope:
 
 ```json
@@ -112,13 +124,23 @@ Phases 0, 1, 2, 3, 4, 5, 6, 7, 8, and 9 are complete because:
 - `render.yaml` exists at the repo root for repeatable Render deployment from the monorepo
 - `backend/scripts/smoke-test.js` exists for local and deployed smoke verification
 - `TESTING_STRATEGY.md` and `DEPLOYMENT_GUIDE.md` are now part of the handoff docs
-- the current regression suite passed with `106/106` tests on March 26, 2026
+- `users` profile data now includes `date_of_birth`, `address`, and URL-based `avatar_url`
+- `notifications` schema exists in both `sql/` and Supabase migration form
+- `/users/me` now supports self-service profile edits for safe profile-only fields
+- `/users` now supports people-directory reads and manager/admin employee creation
+- `/users/:userId/avatar` now supports manager/admin URL-based avatar updates
+- `/teams` now supports real team creation and editing
+- `/teams/:teamId/members` now supports persisted membership add/remove operations
+- `/notifications` now supports backend-backed list/read/dismiss flows
+- team-added notifications are created at membership write time
+- due-soon notifications are generated lazily from task data and deduped in storage
+- the current regression suite passed with `140/140` tests on April 9, 2026
 
 ## Next Recommended Phase
 
 The planned roadmap is complete. Recommended optional next work:
 
 - task comments and activity history
-- reminder notifications
+- richer scheduled/email reminder delivery
 - attachments
 - export-ready reporting
