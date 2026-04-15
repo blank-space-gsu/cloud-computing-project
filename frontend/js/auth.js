@@ -6,6 +6,11 @@ export function getUser() {
   return currentUser;
 }
 
+export function setUser(user) {
+  currentUser = user;
+  return currentUser;
+}
+
 export function isLoggedIn() {
   return currentUser !== null;
 }

@@ -474,14 +474,17 @@ const result = await response.json();
 - RBAC middleware foundation
 - normalized MVP schema
 - users and teams endpoints
+- self-profile update endpoint
+- team create/update/membership management endpoints
 - task CRUD and assignment endpoints
 - employee and manager dashboard endpoints
 - hours logging create/list endpoints
 - productivity metrics endpoint
 - goals endpoints
+- notification list/read/dismiss endpoints
 
 ### Optional Next Enhancements
 
 - task comments and activity history
-- notifications and reminders
+- scheduled/email reminder delivery beyond the current in-app notification endpoints
 - export-ready reporting

@@ -3,7 +3,7 @@ import { dismissNotification, markNotificationRead, syncNotifications } from '..
 import { formatDateTime, formatTimeRemaining } from '../utils/format.js';
 
 function notificationCopy(notification) {
-  if (notification.type === 'task_due') {
+  if (notification.type === 'task_due' || notification.type === 'task_due_soon' || notification.type === 'task_overdue') {
     return notification.meta?.timeRemainingSeconds != null
       ? formatTimeRemaining(notification.meta.timeRemainingSeconds)
       : 'Task alert';
@@ -13,16 +13,18 @@ function notificationCopy(notification) {
 }
 
 function notificationLinkLabel(notification) {
-  return notification.type === 'task_due' ? 'Open tasks' : 'Open teams';
+  return notification.type === 'task_due' || notification.type === 'task_due_soon' || notification.type === 'task_overdue'
+    ? 'Open tasks'
+    : 'Open teams';
 }
 
 function buildNotificationItem(notification, { onChange, archive = false }) {
   const item = el('details', {
     className: `notification-item${notification.readAt ? ' is-read' : ' is-unread'}`,
-    onToggle: (event) => {
+    onToggle: async (event) => {
       if (event.currentTarget.open && !notification.readAt) {
-        markNotificationRead(notification.id);
-        onChange();
+        await markNotificationRead(notification.id);
+        await onChange();
       }
     }
   },
@@ -37,11 +39,11 @@ function buildNotificationItem(notification, { onChange, archive = false }) {
           className: 'notification-item__dismiss',
           type: 'button',
           title: 'Delete notification',
-          onClick: (event) => {
+          onClick: async (event) => {
             event.preventDefault();
             event.stopPropagation();
-            dismissNotification(notification.id);
-            onChange();
+            await dismissNotification(notification.id);
+            await onChange();
           }
         }, '×')
       )

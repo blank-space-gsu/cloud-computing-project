@@ -187,6 +187,8 @@ These demo accounts are expected to exist after running `npm run seed:demo-users
 - Preserve the consistent API response structure.
 - Prefer student-manageable solutions over unnecessary abstraction.
 - Use phased delivery. Finish code, tests, docs, and progress tracking for one phase before moving to the next.
+- For module-based Codex work, stay inside the declared module scope, inspect relevant files before editing, make the smallest correct change, and separate confirmed facts from assumptions.
+- After each module, report files changed, commands run, validation results, blockers, and the recommended next module.
 
 ## When Adding New Backend Features
 

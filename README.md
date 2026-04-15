@@ -17,7 +17,7 @@ The application helps managers assign and monitor work while giving employees a 
 
 - task comments and activity history
 - file attachments
-- notifications and reminders
+- scheduled or email-based reminder delivery
 - export-ready reporting
 
 ## Repository Layout
@@ -41,14 +41,15 @@ Current frontend experience:
 - Tasks, goals, productivity, hours, teams, and profile pages
 - Team directory and people views
 - Manager and employee profile pages
-- Frontend-only profile edit preview for personal info fields
+- Backend-backed self-profile editing for safe personal info fields
+- Backend-backed notification list, read, and dismiss actions
 - Responsive TaskFlow-styled UI using shared components and hash-based routing
 
 Frontend notes:
 
 - The frontend work was kept separate from backend source changes.
-- Local demo data is shown through the existing backend seed scripts and API responses, not through new backend code in this branch.
-- Some UI actions are intentionally presentation-only until backend support exists, including employee creation and profile photo management.
+- Seeded demo data is shown through the backend seed scripts and API responses.
+- Some UI actions remain presentation-only in the current frontend, including manager-side employee creation and profile photo controls. Backend support exists for employee creation and URL-based avatar updates, but those specific UI controls are not wired yet; binary photo upload is not implemented.
 
 See [frontend/README.md](frontend/README.md) for the frontend structure, features, and local run instructions.
 
@@ -157,9 +158,14 @@ The frontend currently uses the following stable backend surface:
 - Login endpoint: `POST /api/v1/auth/login`
 - Current-user endpoint: `GET /api/v1/auth/me`
 - User profile endpoint: `GET /api/v1/users/me`
+- Self-profile update endpoint: `PATCH /api/v1/users/me`
 - Team list endpoint: `GET /api/v1/teams`
+- Team create endpoint: `POST /api/v1/teams`
 - Team detail endpoint: `GET /api/v1/teams/:teamId`
+- Team update endpoint: `PATCH /api/v1/teams/:teamId`
 - Team member endpoint: `GET /api/v1/teams/:teamId/members`
+- Team member add endpoint: `POST /api/v1/teams/:teamId/members`
+- Team member remove endpoint: `DELETE /api/v1/teams/:teamId/members/:userId`
 - Task list endpoint: `GET /api/v1/tasks`
 - Task create endpoint: `POST /api/v1/tasks`
 - Task detail endpoint: `GET /api/v1/tasks/:taskId`
@@ -172,12 +178,18 @@ The frontend currently uses the following stable backend surface:
 - Goals endpoint: `GET /api/v1/goals`
 - Goal create endpoint: `POST /api/v1/goals`
 - Goal update endpoint: `PATCH /api/v1/goals/:goalId`
+- Notifications endpoint: `GET /api/v1/notifications`
+- Notification read endpoint: `PATCH /api/v1/notifications/:notificationId/read`
+- Notification dismiss endpoint: `DELETE /api/v1/notifications/:notificationId`
 
 The planned backend roadmap is now complete. Future enhancements can continue using the same response conventions so the frontend team can keep reusing one shared `fetch()` helper.
 
 Frontend handoff items that still need backend support if the team wants them to become real features:
 
-- employee creation from the manager UI
-- employee profile photo upload and management
-- editable self-profile save flow for name, job title, date of birth, and address
+- binary employee profile photo upload and management
 - richer team directory contact information where missing from roster responses
+
+Frontend handoff items that have backend support but still need UI wiring:
+
+- employee creation from the manager UI through `POST /api/v1/users`
+- URL-based avatar updates from manager screens through `PATCH /api/v1/users/:userId/avatar`

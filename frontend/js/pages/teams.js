@@ -13,15 +13,12 @@ import {
   formatNumber,
   formatPercent
 } from '../utils/format.js';
-import { getVisibleTeams, selectPreferredTeam, sortTeamsForDemo } from '../utils/teams.js';
+import { selectPreferredTeam } from '../utils/teams.js';
 import {
-  assignPeopleToTeam,
   buildAssignablePeople,
-  createCustomTeam,
   getTeamDetail,
   getWorkspaceTeams,
-  isLocalTeam,
-  updateTeamRecord
+  isLocalTeam
 } from '../utils/localTeams.js';
 
 export default async function teamsPage(container, params) {
@@ -41,7 +38,7 @@ async function renderTeamList(container) {
     const { data } = await api.get('/teams');
     clearElement(container);
 
-    const baseTeams = sortTeamsForDemo(getVisibleTeams(data.teams || []));
+    const baseTeams = data.teams || [];
     const teams = getWorkspaceTeams(baseTeams, getUser());
     const preferredTeam = selectPreferredTeam(teams);
     if (!teams.length) {
@@ -80,13 +77,12 @@ async function renderTeamList(container) {
                 mode: 'create',
                 availablePeople: buildAssignablePeople(bundles, getUser()),
                 onSave: async ({ name, description, members }) => {
-                  const created = createCustomTeam({
+                  const created = await createPersistedTeam({
                     name,
                     description,
-                    currentUser: getUser(),
-                    selectedMembers: members
+                    members
                   });
-                  showSuccess('New team created in the frontend demo workspace.');
+                  showSuccess('New team created successfully.');
                   window.location.hash = `#/teams/${created.id}`;
                 }
               });
@@ -133,7 +129,7 @@ async function renderTeamDetail(container, teamId, { showBackButton = true } = {
   try {
     const currentUser = getUser();
     const { data: teamsData } = await api.get('/teams');
-    const baseTeams = sortTeamsForDemo(getVisibleTeams(teamsData.teams || []));
+    const baseTeams = teamsData.teams || [];
     const workspaceTeams = getWorkspaceTeams(baseTeams, currentUser);
     const baseTeam = workspaceTeams.find((team) => team.id === teamId && !team.isLocalTeam) || null;
     const teamBundles = await loadTeamBundles(baseTeams);
@@ -161,6 +157,8 @@ async function renderTeamDetail(container, teamId, { showBackButton = true } = {
 
     const leaders = members.filter((member) => member.membershipRole === 'manager');
     const employees = members.filter((member) => member.membershipRole !== 'manager');
+    const currentMemberIds = new Set(members.map((member) => member.id));
+    const assignablePeople = availablePeople.filter((person) => !currentMemberIds.has(person.id));
 
     renderHeader(team.name || 'Team Directory', isManager() ? 'People, leadership, and demo-ready team context' : 'Your team roster');
 
@@ -179,13 +177,12 @@ async function renderTeamDetail(container, teamId, { showBackButton = true } = {
             mode: 'create',
             availablePeople,
             onSave: async ({ name, description, members: selectedMembers }) => {
-              const created = createCustomTeam({
+              const created = await createPersistedTeam({
                 name,
                 description,
-                currentUser,
-                selectedMembers
+                members: selectedMembers
               });
-              showSuccess('New team created in the frontend demo workspace.');
+              showSuccess('New team created successfully.');
               window.location.hash = `#/teams/${created.id}`;
             }
           })
@@ -198,8 +195,8 @@ async function renderTeamDetail(container, teamId, { showBackButton = true } = {
             team,
             availablePeople,
             onSave: async ({ name, description }) => {
-              updateTeamRecord(team.id, { name, description });
-              showSuccess('Team details updated for this frontend demo.');
+              await updatePersistedTeam(team.id, { name, description });
+              showSuccess('Team details updated successfully.');
               await renderTeamDetail(container, team.id, { showBackButton });
             }
           })
@@ -209,10 +206,10 @@ async function renderTeamDetail(container, teamId, { showBackButton = true } = {
           type: 'button',
           onClick: () => openAssignPeopleModal({
             team,
-            availablePeople,
+            availablePeople: assignablePeople,
             onSave: async (selectedMembers) => {
-              assignPeopleToTeam(team.id, selectedMembers, { teamName: team.name });
-              showSuccess('People assigned to the team in this frontend demo.');
+              await addPersistedTeamMembers(team.id, selectedMembers);
+              showSuccess('People assigned to the team successfully.');
               await renderTeamDetail(container, team.id, { showBackButton });
             }
           })
@@ -255,15 +252,32 @@ async function renderTeamDetail(container, teamId, { showBackButton = true } = {
             : 'Your teammate roster for this team.',
           employees.length
             ? el('div', { className: 'member-grid profile-member-grid' },
-                ...employees.map((member) => personCard(member, () => openMemberDetailModal({ team, member })))
+                ...employees.map((member) => personCard(
+                  member,
+                  () => openMemberDetailModal({ team, member }),
+                  {
+                    action: team.canManageTeam && !team.isLocalTeam
+                      ? {
+                          label: 'Remove',
+                          className: 'btn btn-sm btn-danger',
+                          onClick: () => removePersistedTeamMember({
+                            container,
+                            team,
+                            member,
+                            showBackButton
+                          })
+                        }
+                      : null
+                  }
+                ))
               )
             : emptyState('No employees found', 'No employee roster was returned for this team.')
         ),
         sectionCard(
           'People tools',
-          'The frontend flow is ready for contact and profile management, but some actions still need backend support.',
+          'Team structure changes use the backend now; profile-specific tools remain planned.',
           el('div', { className: 'support-card' },
-            el('p', {}, 'Right now you can inspect roster roles and profile snapshots. New employee creation, avatar uploads, and full team email contact lists still need backend endpoints.'),
+            el('p', {}, 'Right now you can inspect roster roles, profile snapshots, and manage team membership. New employee creation and avatar uploads remain follow-up work.'),
             team.canManageTeam
               ? el('div', { className: 'btn-group', style: 'margin-top:12px' },
                   el('button', { className: 'btn btn-primary', type: 'button', onClick: () => openSupportModal('Add Employee', addEmployeeRequirements()) }, 'Add Employee'),
@@ -294,6 +308,50 @@ async function loadTeamBundles(baseTeams) {
       }
     })
   );
+}
+
+async function createPersistedTeam({ name, description, members = [] }) {
+  const { data } = await api.post('/teams', {
+    name,
+    description: description || null
+  });
+  const team = data.team;
+
+  await addPersistedTeamMembers(team.id, members);
+
+  return team;
+}
+
+async function updatePersistedTeam(teamId, { name, description }) {
+  const { data } = await api.patch(`/teams/${teamId}`, {
+    name,
+    description: description || null
+  });
+
+  return data.team;
+}
+
+async function addPersistedTeamMembers(teamId, members = []) {
+  for (const member of members) {
+    await api.post(`/teams/${teamId}/members`, {
+      userId: member.id,
+      membershipRole: 'member'
+    });
+  }
+}
+
+async function removePersistedTeamMember({ container, team, member, showBackButton }) {
+  const name = member.fullName || `${member.firstName || ''} ${member.lastName || ''}`.trim() || 'this member';
+  const confirmed = window.confirm(`Remove ${name} from ${team.name}?`);
+  if (!confirmed) return;
+
+  try {
+    await api.del(`/teams/${team.id}/members/${member.id}`);
+    showSuccess('Team member removed successfully.');
+    await renderTeamDetail(container, team.id, { showBackButton });
+  } catch (err) {
+    showError(err);
+  }
 }
 
 function openTeamEditorModal({ mode, team = null, availablePeople = [], onSave }) {
@@ -350,12 +408,18 @@ function openTeamEditorModal({ mode, team = null, availablePeople = [], onSave }
       ? availablePeople.filter((person) => list.querySelector(`input[value="${person.id}"]`)?.checked)
       : [];
 
-    await onSave({
-      name,
-      description: descriptionInput.value.trim(),
-      members: selectedMembers
-    });
-    closeModal();
+    saveBtn.disabled = true;
+    try {
+      await onSave({
+        name,
+        description: descriptionInput.value.trim(),
+        members: selectedMembers
+      });
+      closeModal();
+    } catch (err) {
+      showError(err);
+      saveBtn.disabled = false;
+    }
   });
 
   openModal(
@@ -369,32 +433,42 @@ function openTeamEditorModal({ mode, team = null, availablePeople = [], onSave }
 }
 
 function openAssignPeopleModal({ team, availablePeople = [], onSave }) {
-  const picker = el('div', { className: 'team-member-picker' },
-    ...availablePeople.map((person) => el('label', { className: 'team-member-picker__item' },
-      el('input', { type: 'checkbox', value: person.id }),
-      el('div', {},
-        el('strong', {}, person.fullName),
-        el('span', {}, person.jobTitle || capitalize(person.appRole))
+  const picker = availablePeople.length
+    ? el('div', { className: 'team-member-picker' },
+        ...availablePeople.map((person) => el('label', { className: 'team-member-picker__item' },
+          el('input', { type: 'checkbox', value: person.id }),
+          el('div', {},
+            el('strong', {}, person.fullName),
+            el('span', {}, person.jobTitle || capitalize(person.appRole))
+          )
+        ))
       )
-    ))
-  );
+    : emptyState('No available people', 'Everyone visible to this manager is already on this team.');
 
   const saveBtn = el('button', { className: 'btn btn-primary', type: 'button' }, 'Assign People');
+  saveBtn.disabled = !availablePeople.length;
   saveBtn.addEventListener('click', async () => {
+    if (!availablePeople.length) return;
     const selectedMembers = availablePeople.filter((person) => picker.querySelector(`input[value="${person.id}"]`)?.checked);
     if (!selectedMembers.length) {
       showError('Select at least one person to assign.');
       return;
     }
 
-    await onSave(selectedMembers);
-    closeModal();
+    saveBtn.disabled = true;
+    try {
+      await onSave(selectedMembers);
+      closeModal();
+    } catch (err) {
+      showError(err);
+      saveBtn.disabled = false;
+    }
   });
 
   openModal(
     `Assign People · ${team.name}`,
     el('div', {},
-      el('p', { style: 'margin-bottom:12px' }, 'Assigning people here is frontend-only for the demo and does not change the backend team table.'),
+      el('p', { style: 'margin-bottom:12px' }, 'Assigning people here updates the backend team membership table.'),
       picker
     ),
     el('div', { className: 'btn-group' },
@@ -404,13 +478,25 @@ function openAssignPeopleModal({ team, availablePeople = [], onSave }) {
   );
 }
 
-function personCard(member, onClick) {
+function personCard(member, onClick, { action = null } = {}) {
   return el('div', { className: 'member-card member-card--dashboard member-card--interactive', onClick },
     el('div', { className: 'member-avatar' }, initials(member.fullName)),
     el('div', { className: 'member-info' },
       el('h4', {}, member.fullName || `${member.firstName} ${member.lastName}`),
       el('p', {}, member.jobTitle || 'Team member'),
-      el('span', { className: `badge badge-${member.membershipRole === 'manager' ? 'primary' : 'info'}` }, capitalize(member.membershipRole || member.appRole))
+      el('span', { className: `badge badge-${member.membershipRole === 'manager' ? 'primary' : 'info'}` }, capitalize(member.membershipRole || member.appRole)),
+      action
+        ? el('button', {
+            className: action.className || 'btn btn-sm btn-outline',
+            type: 'button',
+            style: 'margin-top:10px',
+            onClick: (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              action.onClick(member);
+            }
+          }, action.label)
+        : null
     )
   );
 }
@@ -448,7 +534,8 @@ async function openMemberDetailModal({ team, member }) {
     const goals = goalsRes?.data?.goals || [];
     const email = isSelf
       ? getUser().email
-      : tasks.find((task) => task.assignment?.assigneeUserId === member.id)?.assignment?.assigneeEmail ||
+      : member.email ||
+        tasks.find((task) => task.assignment?.assigneeUserId === member.id)?.assignment?.assigneeEmail ||
         goals.find((goal) => goal.targetUser?.id === member.id)?.targetUser?.email ||
         null;
 

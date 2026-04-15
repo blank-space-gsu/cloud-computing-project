@@ -16,6 +16,7 @@ The backend is developed in phases so each milestone is planned, implemented, te
 - Phase 7 is complete.
 - Phase 8 is complete.
 - Phase 9 is complete.
+- The frontend support extension pass is complete for profile edits, team mutations, employee creation APIs, URL-based avatar support, and backend-backed notifications.
 - The MVP schema migration has been applied to the linked Supabase project.
 - Demo auth users exist for manual testing.
 - The planned backend roadmap is complete.
@@ -461,5 +462,5 @@ The planned course-project roadmap is complete. If the team wants to keep extend
 
 - task comments and activity history
 - file attachments
-- notifications and reminders
+- scheduled/email reminder delivery beyond the current in-app notification endpoints
 - export-ready manager reports

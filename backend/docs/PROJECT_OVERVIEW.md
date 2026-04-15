@@ -31,7 +31,7 @@ The planned roadmap is now complete. If the team wants to extend the project aft
 
 - task comments and update history
 - file attachments
-- reminder notifications
+- scheduled/email reminder delivery beyond the current in-app notification endpoints
 - export-ready reporting
 
 ## Backend Goals
@@ -45,7 +45,7 @@ The planned roadmap is now complete. If the team wants to extend the project aft
 
 ## Current Delivery Status
 
-As of March 26, 2026, the backend has completed Phase 0, Phase 1, Phase 2, Phase 3, Phase 4, Phase 5, Phase 6, Phase 7, Phase 8, and Phase 9:
+As of April 9, 2026, the backend has completed Phase 0, Phase 1, Phase 2, Phase 3, Phase 4, Phase 5, Phase 6, Phase 7, Phase 8, Phase 9, and the frontend support extension pass:
 
 - backend project structure created in `/backend`
 - Express application bootstrapped
@@ -76,6 +76,10 @@ As of March 26, 2026, the backend has completed Phase 0, Phase 1, Phase 2, Phase
 - reusable smoke-test script implemented for local and deployed verification
 - Render Blueprint configuration added for monorepo deployment
 - deployment and testing documentation published for final handoff
+- self-profile editing implemented for safe profile-only fields
+- people-directory and manager/admin employee creation APIs implemented
+- persisted team creation, editing, and membership management implemented
+- backend-backed in-app notifications implemented for list, read, and dismiss flows
 - roadmap, architecture, schema, and environment docs published
 
 ## Success Criteria

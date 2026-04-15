@@ -1,11 +1,11 @@
 import { el, clearElement } from '../utils/dom.js';
-import { getUser, isManager } from '../auth.js';
+import { getUser, isManager, setUser } from '../auth.js';
 import * as api from '../api.js';
 import { renderHeader } from '../components/header.js';
 import { showLoading, hideLoading } from '../components/loading.js';
 import { emptyState } from '../components/emptyState.js';
 import { openModal, closeModal } from '../components/modal.js';
-import { showError } from '../components/toast.js';
+import { showError, showSuccess } from '../components/toast.js';
 import { buildNotificationArchiveSection } from '../components/notifications.js';
 import {
   capitalize,
@@ -74,7 +74,8 @@ export default async function profilePage(container, params = {}) {
       user,
       preferredTeam,
       teamBundles,
-      context
+      context,
+      onProfileUpdated: async () => profilePage(container, params)
     });
     const notificationsArchive = await buildNotificationArchiveSection({ open: params.section === 'notifications' });
     profile.appendChild(notificationsArchive);
@@ -91,7 +92,7 @@ export default async function profilePage(container, params = {}) {
   }
 }
 
-function renderProfile({ user, preferredTeam, teamBundles, context }) {
+function renderProfile({ user, preferredTeam, teamBundles, context, onProfileUpdated }) {
   const roster = buildRoster(teamBundles);
   const leaders = roster.filter((member) => member.membershipRole === 'manager');
   const teammates = roster.filter((member) => member.id !== user.id);
@@ -115,12 +116,12 @@ function renderProfile({ user, preferredTeam, teamBundles, context }) {
   return el('div', { className: 'profile-shell' },
     hero,
     isManager()
-      ? renderManagerProfile({ user, preferredTeam, leaders, roster, context })
-      : renderEmployeeProfile({ user, preferredTeam, leaders, teammates, context, teamBundles })
+      ? renderManagerProfile({ user, preferredTeam, leaders, roster, context, onProfileUpdated })
+      : renderEmployeeProfile({ user, preferredTeam, leaders, teammates, context, teamBundles, onProfileUpdated })
   );
 }
 
-function renderManagerProfile({ user, preferredTeam, leaders, roster, context }) {
+function renderManagerProfile({ user, preferredTeam, leaders, roster, context, onProfileUpdated }) {
   const summary = context.dashboard?.summary || {};
   const goalsSummary = context.goals?.summary || {};
   const directReports = roster.filter((member) => member.appRole === 'employee').length;
@@ -142,7 +143,8 @@ function renderManagerProfile({ user, preferredTeam, leaders, roster, context })
           supportLabel: 'Direct reports',
           supportValue: formatNumber(directReports),
           photoAccess: 'You manage team photos',
-          directoryStatus: 'Roster visible'
+          directoryStatus: 'Roster visible',
+          onProfileUpdated
         }),
         'dashboard-section--featured profile-details-card'
       ),
@@ -162,7 +164,7 @@ function renderManagerProfile({ user, preferredTeam, leaders, roster, context })
   );
 }
 
-function renderEmployeeProfile({ user, preferredTeam, leaders, teammates, context, teamBundles }) {
+function renderEmployeeProfile({ user, preferredTeam, leaders, teammates, context, teamBundles, onProfileUpdated }) {
   const monthlyRollup = context.productivity?.rollups?.monthly || {};
   const goalsSummary = context.goals?.summary || {};
   const primaryTeamMembers = teamBundles.find((bundle) => bundle.team.id === preferredTeam?.id)?.members || [];
@@ -186,7 +188,8 @@ function renderEmployeeProfile({ user, preferredTeam, leaders, teammates, contex
           supportLabel: 'Supervisors',
           supportValue: formatNumber(supervisors.length),
           photoAccess: 'Manager controlled',
-          directoryStatus: 'Partial support'
+          directoryStatus: 'Partial support',
+          onProfileUpdated
         }),
         'dashboard-section--featured profile-details-card'
       ),
@@ -338,10 +341,10 @@ function supervisorCard(member) {
   );
 }
 
-function profileDetailsPanel({ user, preferredTeam, supportLabel, supportValue, photoAccess, directoryStatus }) {
+function profileDetailsPanel({ user, preferredTeam, supportLabel, supportValue, photoAccess, directoryStatus, onProfileUpdated }) {
   return el('div', { className: 'profile-details-panel' },
     profileDetailsFeature({ user, preferredTeam, supportLabel, supportValue, photoAccess, directoryStatus }),
-    profileEditorCard(user)
+    profileEditorCard(user, onProfileUpdated)
   );
 }
 
@@ -373,37 +376,56 @@ function profileDetailsFeature({ user, preferredTeam, supportLabel, supportValue
   );
 }
 
-function profileEditorCard(user) {
+function profileEditorCard(user, onProfileUpdated) {
+  let saveBtn;
   return el('form', {
     className: 'profile-editor-card',
-    onSubmit: (event) => {
+    onSubmit: async (event) => {
       event.preventDefault();
-      openSupportModal('Profile Editing', profileEditRequirements());
+      const form = event.currentTarget;
+      const payload = {
+        firstName: form.querySelector('[name="firstName"]').value.trim(),
+        lastName: form.querySelector('[name="lastName"]').value.trim(),
+        jobTitle: form.querySelector('[name="jobTitle"]').value.trim() || null,
+        dateOfBirth: form.querySelector('[name="dateOfBirth"]').value || null,
+        address: form.querySelector('[name="address"]').value.trim() || null
+      };
+
+      saveBtn.disabled = true;
+      try {
+        const { data } = await api.patch('/users/me', payload);
+        setUser(data.user);
+        showSuccess('Profile updated successfully.');
+        await onProfileUpdated?.();
+      } catch (err) {
+        showError(err);
+        saveBtn.disabled = false;
+      }
     }
   },
     el('div', { className: 'profile-editor-card__head' },
       el('div', { className: 'profile-editor-card__copy' },
         el('h5', {}, 'Edit profile information'),
-        el('p', {}, 'This form is built in the UI now. Saving profile changes still needs backend support.')
+        el('p', {}, 'Update your self-service profile fields through the backend.')
       ),
-      el('span', { className: 'badge badge-warning' }, 'Visual preview')
+      el('span', { className: 'badge badge-success' }, 'Backend saved')
     ),
     el('div', { className: 'form-row' },
       formGroup('First name', 'firstName', 'text', user.firstName || '', 'Enter first name'),
       formGroup('Last name', 'lastName', 'text', user.lastName || '', 'Enter last name')
     ),
     el('div', { className: 'form-row' },
-      formGroup('Date of birth', 'dateOfBirth', 'date', '', ''),
+      formGroup('Date of birth', 'dateOfBirth', 'date', user.dateOfBirth || '', ''),
       formGroup('Role in company', 'jobTitle', 'text', user.jobTitle || '', 'Enter company role')
     ),
-    textareaGroup('Address', 'address', '', 'Street address, city, state, ZIP'),
+    textareaGroup('Address', 'address', user.address || '', 'Street address, city, state, ZIP'),
     el('div', { className: 'profile-editor-card__meta' },
       profileReadonlyField('App access role', capitalize(user.appRole)),
       profileReadonlyField('Email', user.email)
     ),
     el('div', { className: 'profile-editor-actions' },
-      el('button', { className: 'btn btn-primary', type: 'submit' }, 'Save Changes'),
-      el('p', { className: 'profile-editor-note' }, 'This button opens the backend handoff checklist until profile update endpoints are available.')
+      (saveBtn = el('button', { className: 'btn btn-primary', type: 'submit' }, 'Save Changes')),
+      el('p', { className: 'profile-editor-note' }, 'Editable fields are saved with PATCH /api/v1/users/me.')
     )
   );
 }
