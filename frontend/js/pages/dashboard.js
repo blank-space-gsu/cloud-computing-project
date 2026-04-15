@@ -209,61 +209,67 @@ async function renderManagerDashboard(container) {
       const summary = dashboard.summary || {};
       const goalsSummary = goals.summary || {};
       const attentionTasks = buildManagerAttentionTasks(tasks, dashboard.tasks?.upcomingDeadlines || []);
-      const goalCue = buildManagerGoalsCue(goalsSummary, goals.goals || []);
+      const blockedCount = tasks.filter((t) => t.status === 'blocked').length;
 
-      const hero = buildHero({
-        eyebrow: 'Manager Overview',
-        title: teamInfo?.name || 'Team dashboard',
-        description: teamInfo?.description || 'Start with urgent work, then check who needs support or reassignment.',
-        meta: [
-          pill(`Members · ${teamInfo?.memberCount || mergedMembers.length}`),
-          pill(`Overdue · ${summary.overdueTaskCount || 0}`),
-          pill(`Unassigned · ${summary.unassignedTaskCount || 0}`)
-        ],
-        actions: [
+      const header = el('header', { className: 'mgr-header' },
+        el('div', { className: 'mgr-header__text' },
+          el('h2', { className: 'mgr-header__title' }, teamInfo?.name || 'Team dashboard'),
+          el('p', { className: 'mgr-header__desc' }, teamInfo?.description || 'See who needs help, what is overdue, and where to act next.')
+        ),
+        el('div', { className: 'btn-group' },
           dashboardActionButton('Open Tasks', '#/tasks', 'btn btn-primary btn-sm'),
           dashboardActionButton('Open Team', `#/teams/${teamId}`, 'btn btn-outline btn-sm')
-        ],
-        className: 'page-hero page-hero--manager'
-      });
-
-      const sections = el('div', { className: 'manager-dashboard-flow' },
-        stackedSection(
-          'Needs attention now',
-          'Start here with overdue, due-soon, blocked, and unassigned work that needs a manager decision.',
-          el('div', { className: 'manager-dashboard-section-body' },
-            attentionTasks.length
-              ? buildTaskAccordionList(attentionTasks, {
-                showAssignee: true,
-                showDueHint: true
-              })
-              : emptyState('Nothing urgent right now', 'The current team does not have overdue or priority items that need immediate follow-up.'),
-            el('div', { className: 'btn-group manager-section-actions' },
-              dashboardActionButton('Review all tasks', '#/tasks', 'btn btn-outline btn-sm'),
-              dashboardActionButton('Open team', `#/teams/${teamId}`, 'btn btn-outline btn-sm')
-            )
-          )
-        ),
-        stackedSection(
-          'Team workload snapshot',
-          'A lighter read on who may need help, who is blocked, and where reassignment might help.',
-          buildManagerWorkloadSnapshot(teamId, employeeRows, Boolean((dashboard.charts?.workloadByEmployee || []).length))
-        ),
-        goalCue
+        )
       );
 
-      content.append(hero, sections);
+      const statStrip = el('div', { className: 'mgr-stat-strip' },
+        mgrStatCell('Overdue', summary.overdueTaskCount || 0, (summary.overdueTaskCount || 0) > 0 ? 'danger' : null),
+        mgrStatCell('Blocked', blockedCount, blockedCount > 0 ? 'warning' : null),
+        mgrStatCell('Unassigned', summary.unassignedTaskCount || 0, (summary.unassignedTaskCount || 0) > 0 ? 'info' : null),
+        mgrStatCell('Completion', formatPercent(summary.completionRate || 0, 0), null)
+      );
 
-      requestAnimationFrame(() => barChart(
-        'dash-manager-workload',
-        (dashboard.charts?.workloadByEmployee || []).map((member) => member.fullName),
-        [{
-          label: 'Assigned tasks',
-          data: (dashboard.charts?.workloadByEmployee || []).map((member) => member.assignedTaskCount),
-          color: '#6366f1'
-        }],
-        true
-      ));
+      const watchMembers = [...employeeRows].sort(compareMemberAttention).slice(0, 4);
+
+      const attentionSection = el('section', { className: 'dashboard-section card' },
+        el('div', { className: 'section-header section-header--stacked' },
+          el('div', {},
+            el('h3', { className: 'section-title' }, 'Needs attention'),
+            el('p', { className: 'section-subtitle' }, 'Overdue, blocked, due-soon, and unassigned work sorted by urgency.')
+          )
+        ),
+        attentionTasks.length
+          ? el('div', { className: 'mgr-attention-list' }, ...attentionTasks.slice(0, 5).map(mgrAttentionRow))
+          : emptyState('Nothing urgent', 'No overdue or priority items need follow-up right now.'),
+        el('div', { className: 'mgr-section-footer' },
+          dashboardActionButton('Review all tasks', '#/tasks', 'btn btn-outline btn-sm')
+        )
+      );
+
+      const peopleSection = el('section', { className: 'dashboard-section card' },
+        el('div', { className: 'section-header section-header--stacked' },
+          el('div', {},
+            el('h3', { className: 'section-title' }, 'People check-in'),
+            el('p', { className: 'section-subtitle' }, 'Who may need help, reassignment, or a quick follow-up.')
+          )
+        ),
+        watchMembers.length
+          ? el('div', { className: 'mgr-people-list' }, ...watchMembers.map(mgrPeopleRow))
+          : emptyState('No team members', 'Add employees to this team to see workload guidance.'),
+        el('div', { className: 'mgr-section-footer' },
+          dashboardActionButton('Open team', `#/teams/${teamId}`, 'btn btn-outline btn-sm')
+        )
+      );
+
+      const goalsNudge = mgrGoalsNudge(goalsSummary, goals.goals || []);
+
+      const layout = el('div', { className: 'mgr-flow' },
+        attentionSection,
+        peopleSection,
+        goalsNudge
+      );
+
+      content.append(header, statStrip, layout);
     } catch (err) {
       showError(err);
       hideLoading(content);
@@ -479,36 +485,6 @@ function attentionTaskScore(task) {
   return score;
 }
 
-function buildManagerWorkloadSnapshot(teamId, members, hasChartData) {
-  return el('div', { className: 'manager-workload-layout' },
-    hasChartData
-      ? chartCard('Workload by employee', 'dash-manager-workload', 'Assigned task counts by teammate.')
-      : el('div', { className: 'card manager-workload-panel manager-workload-panel--empty' },
-          emptyState('No workload yet', 'Assign a few tasks to this team to start seeing workload balance here.')
-        ),
-    compactWorkloadList(teamId, members)
-  );
-}
-
-function compactWorkloadList(teamId, members) {
-  const watchlist = [...members]
-    .sort(compareMemberAttention)
-    .slice(0, 4);
-
-  return el('div', { className: 'manager-workload-panel' },
-    el('div', { className: 'manager-workload-panel__head' },
-      el('h4', {}, 'Who may need help'),
-      el('p', {}, 'Use this quick scan to spot blocked work, high load, or teammates who need a follow-up.')
-    ),
-    watchlist.length
-      ? el('div', { className: 'manager-workload-watchlist' }, ...watchlist.map((member) => workloadWatchItem(member)))
-      : emptyState('No team members', 'Add employees to this team to see workload guidance here.'),
-    el('div', { className: 'btn-group manager-section-actions' },
-      dashboardActionButton('Open team', `#/teams/${teamId}`, 'btn btn-outline btn-sm')
-    )
-  );
-}
-
 function compareMemberAttention(left, right) {
   const blockedDiff = Number(right.blockedTaskCount || 0) - Number(left.blockedTaskCount || 0);
   if (blockedDiff !== 0) return blockedDiff;
@@ -517,26 +493,6 @@ function compareMemberAttention(left, right) {
   if (openDiff !== 0) return openDiff;
 
   return Number(left.completionRate || 0) - Number(right.completionRate || 0);
-}
-
-function workloadWatchItem(member) {
-  const signal = workloadSignal(member);
-
-  return el('article', { className: 'manager-workload-watchitem' },
-    el('div', { className: 'manager-workload-watchitem__top' },
-      el('div', { className: 'manager-workload-watchitem__identity' },
-        el('strong', {}, member.fullName),
-        el('span', {}, member.jobTitle || 'Team member')
-      ),
-      el('span', { className: `badge badge-${signal.tone}` }, signal.label)
-    ),
-    el('div', { className: 'manager-workload-watchitem__stats' },
-      workloadMiniStat('Open', formatNumber(member.openTaskCount || 0)),
-      workloadMiniStat('Blocked', formatNumber(member.blockedTaskCount || 0)),
-      workloadMiniStat('Completion', formatPercent(member.completionRate || 0, 1))
-    ),
-    el('p', { className: 'manager-workload-watchitem__note' }, signal.note)
-  );
 }
 
 function workloadSignal(member) {
@@ -583,33 +539,66 @@ function workloadSignal(member) {
   };
 }
 
-function workloadMiniStat(label, value) {
-  return el('div', { className: 'manager-workload-watchitem__stat' },
-    el('span', {}, label),
-    el('strong', {}, value)
+function mgrStatCell(label, value, tone) {
+  return el('div', { className: `mgr-stat-strip__cell${tone ? ` mgr-stat-strip__cell--${tone}` : ''}` },
+    el('span', { className: 'mgr-stat-strip__label' }, label),
+    el('strong', { className: 'mgr-stat-strip__value' }, String(value))
   );
 }
 
-function buildManagerGoalsCue(goalsSummary, goals = []) {
+function attentionSignal(task) {
+  if (task.isOverdue) return { label: 'Overdue', tone: 'danger' };
+  if (task.status === 'blocked') return { label: 'Blocked', tone: 'warning' };
+  if (task.isDueSoon) return { label: 'Due soon', tone: 'warning' };
+  if (!task.assignment?.assigneeFullName) return { label: 'Unassigned', tone: 'info' };
+  return { label: capitalize(task.priority || 'medium'), tone: 'default' };
+}
+
+function mgrAttentionRow(task) {
+  const signal = attentionSignal(task);
+  return el('div', { className: 'mgr-attention-row' },
+    el('div', { className: 'mgr-attention-row__main' },
+      el('strong', { className: 'mgr-attention-row__title' }, task.title),
+      el('span', { className: 'mgr-attention-row__assignee' }, task.assignment?.assigneeFullName || 'Unassigned')
+    ),
+    el('div', { className: 'mgr-attention-row__meta' },
+      el('span', { className: `badge badge-${signal.tone}` }, signal.label),
+      el('span', { className: 'mgr-attention-row__due' }, task.dueAt ? formatShortDate(task.dueAt) : 'No due date')
+    )
+  );
+}
+
+function mgrPeopleRow(member) {
+  const signal = workloadSignal(member);
+  return el('div', { className: 'mgr-people-row' },
+    el('div', { className: 'mgr-people-row__main' },
+      el('strong', {}, member.fullName),
+      el('span', {}, member.jobTitle || 'Team member')
+    ),
+    el('div', { className: 'mgr-people-row__meta' },
+      el('span', { className: `badge badge-${signal.tone}` }, signal.label),
+      el('span', {}, `${formatNumber(member.openTaskCount || 0)} open`)
+    )
+  );
+}
+
+function mgrGoalsNudge(goalsSummary, goals = []) {
   const activeGoalCount = Number(goalsSummary.activeGoalCount || 0);
   if (!activeGoalCount) return null;
 
   const nextGoal = [...goals].find((goal) => !goal.isTargetMet) || goals[0];
   const nextGoalDate = nextGoal?.endDate ? formatShortDate(nextGoal.endDate) : null;
 
-  return el('section', { className: 'dashboard-section card manager-goals-nudge' },
-    el('div', { className: 'manager-goals-nudge__copy' },
-      el('p', { className: 'manager-goals-nudge__eyebrow' }, 'Goals'),
-      el('h3', { className: 'section-title' }, `${formatCompactNumber(activeGoalCount)} active ${activeGoalCount === 1 ? 'goal' : 'goals'}`),
-      el('p', { className: 'section-subtitle' },
+  return el('section', { className: 'card mgr-goals-nudge' },
+    el('div', { className: 'mgr-goals-nudge__copy' },
+      el('span', { className: 'mgr-goals-nudge__count' }, `${formatCompactNumber(activeGoalCount)} active ${activeGoalCount === 1 ? 'goal' : 'goals'}`),
+      el('span', { className: 'mgr-goals-nudge__next' },
         nextGoal
-          ? `Next check-in: ${nextGoal.title}${nextGoalDate ? ` · ${nextGoalDate}` : ''}.`
-          : 'Review current targets and quota progress when you are ready.'
+          ? `Next: ${nextGoal.title}${nextGoalDate ? ` · ${nextGoalDate}` : ''}`
+          : 'Review targets when ready.'
       )
     ),
-    el('div', { className: 'btn-group manager-section-actions' },
-      dashboardActionButton('Open Goals', '#/goals', 'btn btn-outline btn-sm')
-    )
+    dashboardActionButton('Open Goals', '#/goals', 'btn btn-outline btn-sm')
   );
 }
 
