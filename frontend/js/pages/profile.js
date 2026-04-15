@@ -4,7 +4,6 @@ import * as api from '../api.js';
 import { renderHeader } from '../components/header.js';
 import { showLoading, hideLoading } from '../components/loading.js';
 import { emptyState } from '../components/emptyState.js';
-import { openModal, closeModal } from '../components/modal.js';
 import { showError, showSuccess } from '../components/toast.js';
 import { buildNotificationArchiveSection } from '../components/notifications.js';
 import {
@@ -155,11 +154,6 @@ function renderManagerProfile({ user, preferredTeam, leaders, roster, context, o
           ? el('div', { className: 'member-grid profile-member-grid' }, ...leaders.map((member) => rosterCard(member)))
           : emptyState('No leaders found', 'No manager roster is available right now.')
       ),
-      sectionCard(
-        'People tools',
-        'Profile photos and employee creation belong here in the finished product.',
-        managerToolsCard()
-      )
     )
   );
 }
@@ -249,58 +243,15 @@ function profileActionCard(user, leaders) {
   return el('div', { className: 'profile-action-card' },
     el('h3', {}, 'Access & Actions'),
     el('p', {}, isManager()
-      ? 'You can manage team rosters now; employee photo controls remain planned.'
-      : 'Your profile photo is manager-controlled in the final build.'
+      ? 'You can manage team rosters, assign people, and review your directory from here.'
+      : 'View your identity, team context, and supervisor contacts.'
     ),
     el('div', { className: 'profile-action-card__grid' },
       metricStat('Email', user.email),
       metricStat('Primary team', user.teams?.[0]?.teamName || 'No team'),
-      metricStat(isManager() ? 'Direct controls' : 'Supervisors', isManager() ? 'People tools' : formatNumber(leaders.length))
-    ),
-    isManager()
-      ? el('div', { className: 'btn-group', style: 'margin-top:14px' },
-          el('button', { className: 'btn btn-primary', type: 'button', onClick: () => openSupportModal('Add Employee', addEmployeeRequirements()) }, 'Add Employee'),
-          el('button', { className: 'btn btn-outline', type: 'button', onClick: () => openSupportModal('Photo Controls', photoRequirements()) }, 'Manage Photos')
-        )
-      : el('p', { className: 'profile-action-card__footnote' }, 'Manager approval is required for new profile photos.')
-  );
-}
-
-function managerToolsCard() {
-  return el('div', { className: 'support-card' },
-    el('p', {}, 'These actions are placed here in the UI so the flow is ready, but they still need backend support to be real.'),
-    el('div', { className: 'btn-group', style: 'margin-top:12px' },
-      el('button', { className: 'btn btn-primary', type: 'button', onClick: () => openSupportModal('Add Employee', addEmployeeRequirements()) }, 'Add Employee'),
-      el('button', { className: 'btn btn-outline', type: 'button', onClick: () => openSupportModal('Employee Photos', photoRequirements()) }, 'Manage Employee Photos')
+      metricStat(isManager() ? 'Team access' : 'Supervisors', isManager() ? 'Roster & directory' : formatNumber(leaders.length))
     )
   );
-}
-
-function addEmployeeRequirements() {
-  return [
-    'Create employee auth account and app profile endpoint',
-    'Create or assign employee to a team endpoint',
-    'Optional photo upload field at employee creation time',
-    'Return the new employee in roster and team list responses'
-  ];
-}
-
-function photoRequirements() {
-  return [
-    'Profile photo upload endpoint',
-    'Stored avatar URL on the user profile',
-    'Manager-only update permission for employee photos',
-    'Avatar URL returned from auth, users/me, and team member responses'
-  ];
-}
-
-function openSupportModal(title, items) {
-  openModal(title, el('div', { className: 'support-modal' },
-    el('p', {}, 'This frontend flow is ready for the feature, but the backend still needs to supply these capabilities:'),
-    el('ul', { className: 'support-list' }, ...items.map((item) => el('li', {}, item)))
-  ), el('div', { className: 'btn-group' },
-    el('button', { className: 'btn btn-primary', type: 'button', onClick: closeModal }, 'Close')
-  ));
 }
 
 function sectionCard(title, subtitle, body, className = '') {

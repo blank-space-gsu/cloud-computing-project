@@ -213,9 +213,7 @@ async function renderTeamDetail(container, teamId, { showBackButton = true } = {
               await renderTeamDetail(container, team.id, { showBackButton });
             }
           })
-        }, 'Assign People'),
-        el('button', { className: 'btn btn-primary', type: 'button', onClick: () => openSupportModal('Add Employee', addEmployeeRequirements()) }, 'Add Employee'),
-        el('button', { className: 'btn btn-outline', type: 'button', onClick: () => openSupportModal('Profile Photos', photoRequirements()) }, 'Photo Controls')
+        }, 'Assign People')
       );
     }
 
@@ -273,19 +271,6 @@ async function renderTeamDetail(container, teamId, { showBackButton = true } = {
               )
             : emptyState('No employees found', 'No employee roster was returned for this team.')
         ),
-        sectionCard(
-          'People tools',
-          'Team structure changes use the backend now; profile-specific tools remain planned.',
-          el('div', { className: 'support-card' },
-            el('p', {}, 'Right now you can inspect roster roles, profile snapshots, and manage team membership. New employee creation and avatar uploads remain follow-up work.'),
-            team.canManageTeam
-              ? el('div', { className: 'btn-group', style: 'margin-top:12px' },
-                  el('button', { className: 'btn btn-primary', type: 'button', onClick: () => openSupportModal('Add Employee', addEmployeeRequirements()) }, 'Add Employee'),
-                  el('button', { className: 'btn btn-outline', type: 'button', onClick: () => openSupportModal('Email Directory', emailRequirements()) }, 'Contact Data')
-                )
-              : null
-          )
-        )
       );
 
     container.append(hero);
@@ -651,39 +636,6 @@ function summaryCard(label, value, note) {
     el('div', { className: 'card-value' }, value),
     el('div', { className: 'card-footer' }, note)
   );
-}
-
-function openSupportModal(title, items) {
-  openModal(title, el('div', { className: 'support-modal' },
-    el('p', {}, 'This frontend entry point is placed intentionally, but these backend capabilities still need to be added:'),
-    el('ul', { className: 'support-list' }, ...items.map((item) => el('li', {}, item)))
-  ), el('div', { className: 'btn-group' },
-    el('button', { className: 'btn btn-primary', type: 'button', onClick: closeModal }, 'Close')
-  ));
-}
-
-function addEmployeeRequirements() {
-  return [
-    'Create employee account endpoint',
-    'Create user profile and assign team membership endpoint',
-    'Return the created employee in team-member responses',
-    'Optional create-time avatar upload support'
-  ];
-}
-
-function photoRequirements() {
-  return [
-    'User avatar upload endpoint',
-    'Stored avatar URL returned in auth and team-member payloads',
-    'Manager-only permission for employee photo changes'
-  ];
-}
-
-function emailRequirements() {
-  return [
-    'Expose member email in /teams/:teamId/members or provide a dedicated people endpoint',
-    'Return contact preferences if you want richer team contact cards'
-  ];
 }
 
 function metricsPanel(items) {

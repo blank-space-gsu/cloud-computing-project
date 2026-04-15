@@ -8,7 +8,6 @@ function navItems() {
     { path: '#/dashboard', label: 'Dashboard', icon: '📊' },
     { path: '#/tasks', label: 'Tasks', icon: '✅' },
     { path: '#/teams', label: isManager() ? 'Teams & People' : 'Teams', icon: '👥' },
-    { path: '#/productivity', label: 'Productivity', icon: '📈' },
     { path: '#/goals', label: 'Goals', icon: '🎯' },
     { path: '#/profile', label: 'Profile', icon: '🙍' }
   ];

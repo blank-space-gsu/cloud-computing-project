@@ -192,8 +192,8 @@ async function renderManagerDashboard(container) {
       const [dashboardRes, productivityRes, goalsRes, tasksRes, teamMembersRes] = await Promise.all([
         api.get(`/dashboards/manager?teamId=${teamId}`),
         api.get(`/productivity-metrics?scope=team&teamId=${teamId}`),
-        api.get(`/goals?teamId=${teamId}&sortBy=endDate&sortOrder=asc&includeCancelled=false&limit=6`),
-        api.get(`/tasks?teamId=${teamId}&sortBy=urgency&sortOrder=asc&includeCompleted=true&page=1&limit=6`),
+        api.get(`/goals?teamId=${teamId}&sortBy=endDate&sortOrder=asc&includeCancelled=false&limit=3`),
+        api.get(`/tasks?teamId=${teamId}&sortBy=urgency&sortOrder=asc&includeCompleted=false&page=1&limit=8`),
         api.get(`/teams/${teamId}/members`)
       ]);
 
@@ -206,62 +206,53 @@ async function renderManagerDashboard(container) {
       const teamInfo = teamMembersRes.data.team || teams.find((team) => team.id === teamId);
       const mergedMembers = mergeMemberMetrics(teamMembersRes.data.members || [], productivity.breakdown?.members || []);
       const employeeRows = mergedMembers.filter((member) => member.appRole === 'employee');
-
       const summary = dashboard.summary || {};
       const goalsSummary = goals.summary || {};
+      const attentionTasks = buildManagerAttentionTasks(tasks, dashboard.tasks?.upcomingDeadlines || []);
+      const goalCue = buildManagerGoalsCue(goalsSummary, goals.goals || []);
 
       const hero = buildHero({
         eyebrow: 'Manager Overview',
         title: teamInfo?.name || 'Team dashboard',
-        description: teamInfo?.description || 'Focus on assignment pressure, task progress, and the key team outcomes that matter.',
+        description: teamInfo?.description || 'Start with urgent work, then check who needs support or reassignment.',
         meta: [
           pill(`Members · ${teamInfo?.memberCount || mergedMembers.length}`),
           pill(`Overdue · ${summary.overdueTaskCount || 0}`),
-          pill(`Active goals · ${goalsSummary.activeGoalCount || 0}`)
+          pill(`Unassigned · ${summary.unassignedTaskCount || 0}`)
         ],
-        className: 'page-hero'
+        actions: [
+          dashboardActionButton('Open Tasks', '#/tasks', 'btn btn-primary btn-sm'),
+          dashboardActionButton('Open Team', `#/teams/${teamId}`, 'btn btn-outline btn-sm')
+        ],
+        className: 'page-hero page-hero--manager'
       });
 
-      const overview = el('div', { className: 'dashboard-top-split' },
-        hero,
-        summaryTableCard('At a glance', [
-          {
-            label: 'Total tasks',
-            value: formatCompactNumber(summary.totalTaskCount || 0),
-            note: 'Tracked tasks in this team scope.'
-          },
-          {
-            label: 'Completion rate',
-            value: formatPercent(summary.completionRate || 0, 1),
-            note: 'Share of tasks already completed.'
-          },
-          {
-            label: 'Overdue tasks',
-            value: formatCompactNumber(summary.overdueTaskCount || 0),
-            note: 'Items already past their due date.'
-          },
-          {
-            label: 'Unassigned tasks',
-            value: formatCompactNumber(summary.unassignedTaskCount || 0),
-            note: 'Tasks still waiting for assignment.'
-          },
-          {
-            label: 'Active goals',
-            value: formatCompactNumber(goalsSummary.activeGoalCount || 0),
-            note: 'Quota targets still in progress.'
-          },
-          {
-            label: 'Average progress',
-            value: formatPercent(summary.averageProgressPercent || 0, 1),
-            note: 'Average task progress across the team.'
-          }
-        ])
+      const sections = el('div', { className: 'manager-dashboard-flow' },
+        stackedSection(
+          'Needs attention now',
+          'Start here with overdue, due-soon, blocked, and unassigned work that needs a manager decision.',
+          el('div', { className: 'manager-dashboard-section-body' },
+            attentionTasks.length
+              ? buildTaskAccordionList(attentionTasks, {
+                showAssignee: true,
+                showDueHint: true
+              })
+              : emptyState('Nothing urgent right now', 'The current team does not have overdue or priority items that need immediate follow-up.'),
+            el('div', { className: 'btn-group manager-section-actions' },
+              dashboardActionButton('Review all tasks', '#/tasks', 'btn btn-outline btn-sm'),
+              dashboardActionButton('Open team', `#/teams/${teamId}`, 'btn btn-outline btn-sm')
+            )
+          )
+        ),
+        stackedSection(
+          'Team workload snapshot',
+          'A lighter read on who may need help, who is blocked, and where reassignment might help.',
+          buildManagerWorkloadSnapshot(teamId, employeeRows, Boolean((dashboard.charts?.workloadByEmployee || []).length))
+        ),
+        goalCue
       );
 
-      const charts = el('div', { className: 'chart-grid chart-grid--dashboard' },
-        chartCard('Workload by employee', 'dash-manager-workload', 'Assigned task counts by teammate.'),
-        chartCard('Task status mix', 'dash-manager-status', 'Current task stages across the selected team.')
-      );
+      content.append(hero, sections);
 
       requestAnimationFrame(() => barChart(
         'dash-manager-workload',
@@ -273,47 +264,6 @@ async function renderManagerDashboard(container) {
         }],
         true
       ));
-
-      requestAnimationFrame(() => doughnutChart(
-        'dash-manager-status',
-        (dashboard.charts?.byStatus || []).map((item) => item.status),
-        (dashboard.charts?.byStatus || []).map((item) => item.count),
-        STATUS_COLORS
-      ));
-
-      const sections = el('div', { className: 'dashboard-layout' },
-        stackedSection(
-          'Priority tasks',
-          'The most urgent work in the current team scope.',
-          tasks.length
-            ? buildTaskAccordionList(tasks, {
-                showAssignee: true,
-                onComplete: (task) => quickCompleteTask(task, () => loadManagerData(teamId))
-              })
-            : emptyState('No tasks found', 'There are no tasks to show for this team.')
-        ),
-        stackedSection(
-          'Upcoming deadlines',
-          'The next due and overdue tasks that need attention.',
-          deadlineList(dashboard.tasks?.upcomingDeadlines || [])
-        ),
-        stackedSection(
-          'Team performance roster',
-          'Employee task volume and progress in one place.',
-          mergedMembers.length
-            ? performanceRoster(mergedMembers)
-            : emptyState('No roster data', 'No member data is available for this team yet.')
-        ),
-        stackedSection(
-          'Goal spotlight',
-          'Key quota targets attached to this team.',
-          goals.goals?.length
-            ? el('div', { className: 'goal-spotlight-grid' }, ...goals.goals.slice(0, 3).map(goalSpotlightCard))
-            : emptyState('No goals', 'No goals have been created for this team yet.')
-        )
-      );
-
-      content.append(overview, charts, sections);
     } catch (err) {
       showError(err);
       hideLoading(content);
@@ -325,14 +275,19 @@ async function renderManagerDashboard(container) {
   await loadManagerData(selectedTeamId);
 }
 
-function buildHero({ eyebrow, title, description, meta = [], className = 'page-hero' }) {
+function buildHero({ eyebrow, title, description, meta = [], actions = [], className = 'page-hero' }) {
   return el('section', { className },
     el('div', { className: 'page-hero__content' },
       el('p', { className: 'page-hero__eyebrow' }, eyebrow),
       el('h2', { className: 'page-hero__title' }, title),
       el('p', { className: 'page-hero__description' }, description)
     ),
-    el('div', { className: 'page-hero__meta' }, ...meta)
+    el('div', { className: 'page-hero__meta' },
+      ...meta,
+      actions.length
+        ? el('div', { className: 'page-hero__actions' }, ...actions)
+        : null
+    )
   );
 }
 
@@ -376,13 +331,13 @@ function summaryTableCard(title, rows) {
   );
 }
 
-function buildTaskAccordionList(tasks, { showAssignee = false, onComplete } = {}) {
+function buildTaskAccordionList(tasks, { showAssignee = false, showDueHint = false, onComplete } = {}) {
   return el('div', { className: 'task-accordion-list' },
-    ...tasks.map((task) => taskAccordionItem(task, { showAssignee, onComplete }))
+    ...tasks.map((task) => taskAccordionItem(task, { showAssignee, showDueHint, onComplete }))
   );
 }
 
-function taskAccordionItem(task, { showAssignee = false, onComplete } = {}) {
+function taskAccordionItem(task, { showAssignee = false, showDueHint = false, onComplete } = {}) {
   const progressValue = Number(task.progressPercent ?? 0);
 
   return el('details', { className: 'task-accordion card' },
@@ -396,6 +351,9 @@ function taskAccordionItem(task, { showAssignee = false, onComplete } = {}) {
       ),
       el('div', { className: 'task-accordion__summary-meta' },
         showAssignee ? el('span', {}, task.assignment?.assigneeFullName || 'Unassigned') : null,
+        showDueHint ? el('span', {
+          className: `task-accordion__due${task.isOverdue ? ' task-accordion__due--danger' : task.isDueSoon ? ' task-accordion__due--warning' : ''}`
+        }, task.dueAt ? `${formatShortDate(task.dueAt)} · ${formatTimeRemaining(task.timeRemainingSeconds)}` : 'No due date') : null,
         el('span', { className: 'task-accordion__icon', 'aria-hidden': 'true' })
       )
     ),
@@ -470,6 +428,191 @@ function stackedSection(title, subtitle, body) {
   );
 }
 
+function dashboardActionButton(label, hash, className = 'btn btn-outline btn-sm') {
+  return el('button', {
+    className,
+    type: 'button',
+    onClick: () => {
+      window.location.hash = hash;
+    }
+  }, label);
+}
+
+function buildManagerAttentionTasks(priorityTasks = [], deadlineTasks = []) {
+  const seen = new Set();
+
+  return [...priorityTasks, ...deadlineTasks]
+    .filter((task) => task && task.id && task.status !== 'completed' && task.status !== 'cancelled')
+    .sort((left, right) => compareAttentionTasks(left, right))
+    .filter((task) => {
+      if (seen.has(task.id)) return false;
+      seen.add(task.id);
+      return true;
+    })
+    .slice(0, 6);
+}
+
+function compareAttentionTasks(left, right) {
+  const scoreDiff = attentionTaskScore(right) - attentionTaskScore(left);
+  if (scoreDiff !== 0) return scoreDiff;
+
+  const leftDue = left.dueAt ? new Date(left.dueAt).getTime() : Number.POSITIVE_INFINITY;
+  const rightDue = right.dueAt ? new Date(right.dueAt).getTime() : Number.POSITIVE_INFINITY;
+
+  return leftDue - rightDue;
+}
+
+function attentionTaskScore(task) {
+  const priorityWeight = {
+    urgent: 40,
+    high: 28,
+    medium: 16,
+    low: 8
+  };
+
+  let score = priorityWeight[task.priority] || 0;
+  if (task.isOverdue) score += 120;
+  else if (task.isDueSoon) score += 72;
+  if (!task.assignment?.assigneeFullName) score += 40;
+  if (task.status === 'blocked') score += 52;
+
+  return score;
+}
+
+function buildManagerWorkloadSnapshot(teamId, members, hasChartData) {
+  return el('div', { className: 'manager-workload-layout' },
+    hasChartData
+      ? chartCard('Workload by employee', 'dash-manager-workload', 'Assigned task counts by teammate.')
+      : el('div', { className: 'card manager-workload-panel manager-workload-panel--empty' },
+          emptyState('No workload yet', 'Assign a few tasks to this team to start seeing workload balance here.')
+        ),
+    compactWorkloadList(teamId, members)
+  );
+}
+
+function compactWorkloadList(teamId, members) {
+  const watchlist = [...members]
+    .sort(compareMemberAttention)
+    .slice(0, 4);
+
+  return el('div', { className: 'manager-workload-panel' },
+    el('div', { className: 'manager-workload-panel__head' },
+      el('h4', {}, 'Who may need help'),
+      el('p', {}, 'Use this quick scan to spot blocked work, high load, or teammates who need a follow-up.')
+    ),
+    watchlist.length
+      ? el('div', { className: 'manager-workload-watchlist' }, ...watchlist.map((member) => workloadWatchItem(member)))
+      : emptyState('No team members', 'Add employees to this team to see workload guidance here.'),
+    el('div', { className: 'btn-group manager-section-actions' },
+      dashboardActionButton('Open team', `#/teams/${teamId}`, 'btn btn-outline btn-sm')
+    )
+  );
+}
+
+function compareMemberAttention(left, right) {
+  const blockedDiff = Number(right.blockedTaskCount || 0) - Number(left.blockedTaskCount || 0);
+  if (blockedDiff !== 0) return blockedDiff;
+
+  const openDiff = Number(right.openTaskCount || 0) - Number(left.openTaskCount || 0);
+  if (openDiff !== 0) return openDiff;
+
+  return Number(left.completionRate || 0) - Number(right.completionRate || 0);
+}
+
+function workloadWatchItem(member) {
+  const signal = workloadSignal(member);
+
+  return el('article', { className: 'manager-workload-watchitem' },
+    el('div', { className: 'manager-workload-watchitem__top' },
+      el('div', { className: 'manager-workload-watchitem__identity' },
+        el('strong', {}, member.fullName),
+        el('span', {}, member.jobTitle || 'Team member')
+      ),
+      el('span', { className: `badge badge-${signal.tone}` }, signal.label)
+    ),
+    el('div', { className: 'manager-workload-watchitem__stats' },
+      workloadMiniStat('Open', formatNumber(member.openTaskCount || 0)),
+      workloadMiniStat('Blocked', formatNumber(member.blockedTaskCount || 0)),
+      workloadMiniStat('Completion', formatPercent(member.completionRate || 0, 1))
+    ),
+    el('p', { className: 'manager-workload-watchitem__note' }, signal.note)
+  );
+}
+
+function workloadSignal(member) {
+  const blocked = Number(member.blockedTaskCount || 0);
+  const open = Number(member.openTaskCount || 0);
+  const completion = Number(member.completionRate || 0);
+
+  if (blocked > 0) {
+    return {
+      label: 'Blocked work',
+      tone: 'warning',
+      note: `${formatNumber(blocked)} blocked ${blocked === 1 ? 'task needs' : 'tasks need'} help right now.`
+    };
+  }
+
+  if (open >= 5) {
+    return {
+      label: 'High load',
+      tone: 'danger',
+      note: `${formatNumber(open)} open tasks suggest this teammate may need reassignment support.`
+    };
+  }
+
+  if (open >= 3) {
+    return {
+      label: 'Busy',
+      tone: 'primary',
+      note: `${formatNumber(open)} open tasks are in motion, so keep an eye on new assignments.`
+    };
+  }
+
+  if ((member.taskCount || 0) > 0 && completion < 0.5) {
+    return {
+      label: 'Needs follow-up',
+      tone: 'info',
+      note: `Completion pace is ${formatPercent(completion, 1)}, which may need a quick manager check-in.`
+    };
+  }
+
+  return {
+    label: 'On track',
+    tone: 'success',
+    note: 'Current workload looks manageable at a glance.'
+  };
+}
+
+function workloadMiniStat(label, value) {
+  return el('div', { className: 'manager-workload-watchitem__stat' },
+    el('span', {}, label),
+    el('strong', {}, value)
+  );
+}
+
+function buildManagerGoalsCue(goalsSummary, goals = []) {
+  const activeGoalCount = Number(goalsSummary.activeGoalCount || 0);
+  if (!activeGoalCount) return null;
+
+  const nextGoal = [...goals].find((goal) => !goal.isTargetMet) || goals[0];
+  const nextGoalDate = nextGoal?.endDate ? formatShortDate(nextGoal.endDate) : null;
+
+  return el('section', { className: 'dashboard-section card manager-goals-nudge' },
+    el('div', { className: 'manager-goals-nudge__copy' },
+      el('p', { className: 'manager-goals-nudge__eyebrow' }, 'Goals'),
+      el('h3', { className: 'section-title' }, `${formatCompactNumber(activeGoalCount)} active ${activeGoalCount === 1 ? 'goal' : 'goals'}`),
+      el('p', { className: 'section-subtitle' },
+        nextGoal
+          ? `Next check-in: ${nextGoal.title}${nextGoalDate ? ` · ${nextGoalDate}` : ''}.`
+          : 'Review current targets and quota progress when you are ready.'
+      )
+    ),
+    el('div', { className: 'btn-group manager-section-actions' },
+      dashboardActionButton('Open Goals', '#/goals', 'btn btn-outline btn-sm')
+    )
+  );
+}
+
 function deadlineList(tasks) {
   if (!tasks.length) {
     return emptyState('Nothing urgent', 'No deadline items are waiting right now.');
@@ -519,39 +662,4 @@ function mergeMemberMetrics(members, breakdown) {
     ...member,
     ...(breakdownByUserId.get(member.id) || {})
   }));
-}
-
-function performanceRoster(members) {
-  const employeeRows = members.filter((member) => member.appRole === 'employee');
-
-  if (!employeeRows.length) {
-    return emptyState('No employee metrics', 'Employee comparison data is not available yet.');
-  }
-
-  return el('div', { className: 'performance-roster' },
-    ...employeeRows.map((member) => el('div', { className: 'performance-roster__card' },
-      el('div', { className: 'performance-roster__header' },
-        el('div', {},
-          el('h4', {}, member.fullName),
-          el('p', {}, member.jobTitle || 'Team member')
-        ),
-        el('span', { className: 'badge badge-info' }, `${formatPercent(member.completionRate || 0, 1)} completion`)
-      ),
-      el('div', { className: 'performance-roster__grid' },
-        rosterStat('Tasks', formatNumber(member.taskCount || 0)),
-        rosterStat('Completed', formatNumber(member.completedTaskCount || 0)),
-        rosterStat('Open', formatNumber(member.openTaskCount || 0)),
-        rosterStat('Blocked', formatNumber(member.blockedTaskCount || 0)),
-        rosterStat('Avg progress', formatPercent(member.averageProgressPercent || 0, 1)),
-        rosterStat('Completion rate', formatPercent(member.completionRate || 0, 1))
-      )
-    ))
-  );
-}
-
-function rosterStat(label, value) {
-  return el('div', { className: 'performance-roster__stat' },
-    el('span', {}, label),
-    el('strong', {}, value)
-  );
 }
