@@ -435,13 +435,35 @@ Bearer token required, role must be `manager` or `admin`.
 **Notes**
 
 - duplicate memberships return `409 TEAM_MEMBERSHIP_EXISTS`
+- previously left or removed memberships are reactivated instead of creating a second history row
 - non-admin managers can only add regular members
 - a `team_added` notification is created immediately for the added user
+
+### `GET /api/v1/teams/:teamId/join-access`
+
+**Purpose**
+Returns the current manager-facing join code and invite link for a manageable team.
+
+**Auth**
+Bearer token required, role must be `manager` or `admin`.
+
+**Notes**
+
+- if the team has no active join access yet, the backend generates the current pair lazily
+- join access only creates employee/member memberships
+
+### `POST /api/v1/teams/:teamId/join-access/regenerate`
+
+**Purpose**
+Revokes the current join code and invite link for a manageable team and returns a fresh pair.
+
+**Auth**
+Bearer token required, role must be `manager` or `admin`.
 
 ### `DELETE /api/v1/teams/:teamId/members/:userId`
 
 **Purpose**
-Removes a team membership.
+Removes an active team membership without deleting historical membership state.
 
 **Auth**
 Bearer token required, role must be `manager` or `admin`.
@@ -451,6 +473,43 @@ Bearer token required, role must be `manager` or `admin`.
 - non-admin managers can remove regular members from teams they manage
 - manager membership removal remains admin-only
 - teams must retain at least one manager
+- members with active open assignments in that team cannot be removed yet
+
+### `POST /api/v1/teams/:teamId/members/me/leave`
+
+**Purpose**
+Allows an employee to leave an active team membership while preserving historical membership state.
+
+**Auth**
+Bearer token required, role must be `employee`.
+
+**Notes**
+
+- only active employee/member memberships can be left through this route
+- employees with active open assignments in that team receive `400 TEAM_LEAVE_BLOCKED_OPEN_ASSIGNMENTS`
+- leaving removes the team from active roster views but preserves past membership and assignment history
+
+### `POST /api/v1/team-join`
+
+**Purpose**
+Allows an authenticated employee to join a team using either a join code or an invite token.
+
+**Auth**
+Bearer token required, role must be `employee`.
+
+**Request body**
+
+Provide exactly one of:
+
+- `joinCode`
+- `inviteToken`
+
+**Notes**
+
+- active memberships return `409 TEAM_MEMBERSHIP_EXISTS`
+- prior `left` memberships are reactivated and return the rejoin success message
+- prior `removed` memberships cannot self-reactivate in this slice
+- revoked or expired join access is rejected cleanly
 
 ## Frontend Integration Notes
 
@@ -461,7 +520,9 @@ Bearer token required, role must be `manager` or `admin`.
 - Use `PATCH /users/me` for self-service profile editing.
 - Use `GET /users` for manager/admin people pickers and directory search.
 - Use `PATCH /users/:userId/avatar` for manager/admin avatar URL updates.
-- Use `/teams` and `/teams/:teamId/members` to build team selectors and roster cards.
+- Use `/teams` and `/teams/:teamId/members` to build team selectors and active roster cards.
+- Use `/teams/:teamId/join-access` and `/teams/:teamId/join-access/regenerate` for manager-facing join code and invite-link controls.
+- Use `/team-join` for employee self-join onboarding and `/teams/:teamId/members/me/leave` for self-leave.
 - Team roster payloads now include `email`, `avatarUrl`, and `isActive`.
 - Use `/tasks` for task lists, filtering, and urgency sorting.
 - Use `/task-assignments` for manager-driven assignment actions.
@@ -519,6 +580,8 @@ Bearer token required.
 - `status`
 - `priority`
 - `weekStartDate`
+- `dateFrom`
+- `dateTo`
 - `includeCompleted`
 - `sortBy` with `urgency`, `dueAt`, `priority`, `createdAt`, or `weekStartDate`
 - `sortOrder` with `asc` or `desc`
@@ -528,6 +591,7 @@ Bearer token required.
 - returns `meta.count`, `meta.total`, `meta.page`, and `meta.limit`
 - each task includes computed `timeRemainingSeconds`, `isOverdue`, and `isDueSoon`
 - active assignee data appears under `task.assignment`
+- `dateFrom` and `dateTo` filter by the task `dueAt` calendar date and are useful for employee calendar views
 
 **Error codes**
 
@@ -576,6 +640,52 @@ Bearer token required, role must be `manager` or `admin`.
 - `403 TASK_CREATION_FORBIDDEN`
 - `403 TEAM_MANAGEMENT_FORBIDDEN`
 - `404 TEAM_NOT_FOUND`
+
+## Recurring Task Rules
+
+### `POST /api/v1/recurring-task-rules`
+
+**Purpose**
+Creates a recurring task rule for a manageable team. The rule generates real task instances that flow through Tasks, Worker Tracker, My Tasks, and Calendar as normal tasks.
+
+**Auth**
+Bearer token required, role must be `manager` or `admin`.
+
+**Request body**
+
+```json
+{
+  "teamId": "uuid",
+  "title": "Daily shift handoff",
+  "description": "Post the handoff notes before the morning review.",
+  "priority": "high",
+  "defaultAssigneeUserId": "uuid",
+  "frequency": "weekly",
+  "weekdays": [1, 3, 5],
+  "dueTime": "09:00",
+  "startsOn": "2026-04-20",
+  "endsOn": "2026-05-31"
+}
+```
+
+**Validation**
+
+- `teamId` must be a valid UUID
+- `title` must not be blank
+- `frequency` must be `daily`, `weekly`, or `monthly`
+- `dueTime` must use `HH:MM` 24-hour format
+- `startsOn` and `endsOn` must use `YYYY-MM-DD`
+- weekly rules require one or more `weekdays` values (`0-6`)
+- monthly rules require `dayOfMonth` (`1-31`)
+
+**Notes**
+
+- this MVP intentionally supports only:
+  - daily
+  - weekly on one or more weekdays
+  - monthly on a day-of-month
+- generated task instances are real task rows, not virtual recurrence views
+- advanced recurrence features remain out of scope in this slice
 
 ### `GET /api/v1/tasks/:taskId`
 
@@ -710,6 +820,38 @@ Bearer token required, role must be `manager` or `admin`.
 - `401 UNAUTHORIZED`
 - `403 FORBIDDEN`
 - `404 TEAM_NOT_FOUND`
+
+## Worker Tracker
+
+### `GET /api/v1/worker-tracker`
+
+**Purpose**
+Returns a manager-first tracker view built from teams, active memberships, tasks, assignments, and task updates.
+
+**Auth**
+Bearer token required, role must be `manager` or `admin`.
+
+**Query params**
+
+- `teamId` optional UUID to select one manageable team
+- `memberUserId` optional UUID to drill into one active employee in the selected team
+
+**Response notes**
+
+- `data.availableTeams` lists the manageable teams available to the signed-in manager
+- `data.team` and `data.summary` provide the selected team’s completion, open, completed, overdue, blocked, and unassigned counts
+- `data.members` provides calm employee-level progress rows with completion, open, overdue, and blocked counts
+- `data.tasks` contains the selected employee’s active assigned tasks
+- `data.unassignedTasks` contains a short list of open tasks in the selected team that still need an assignee
+- task drill-down rows include `latestUpdate` data sourced from `task_updates`
+
+**Error codes**
+
+- `400 VALIDATION_ERROR`
+- `401 UNAUTHORIZED`
+- `403 FORBIDDEN`
+- `404 TEAM_NOT_FOUND`
+- `404 TEAM_MEMBER_NOT_FOUND`
 
 ## Hours Logged
 

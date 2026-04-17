@@ -3,23 +3,23 @@ import { navigate } from '../router.js';
 
 const commonJourneys = [
   {
-    title: 'Review my assigned tasks',
-    description: 'Employees can sign in to see current assignments, due dates, progress, and goal alignment.',
+    title: 'Join my team and start work',
+    description: 'Employees can sign in, join one or more teams, and get straight to their assigned work.',
     audience: 'Employees'
   },
   {
-    title: 'Track my progress and goals',
-    description: 'Review personal completion trends, active goals, and current progress in one place.',
+    title: 'Open My Tasks',
+    description: 'Employees can review assigned tasks, update progress, and mark work complete without extra reporting clutter.',
     audience: 'Employees'
   },
   {
-    title: 'Open the manager overview',
-    description: 'Managers can see overdue work, completion rates, team effort, and goal progress immediately.',
+    title: 'Open the manager attention view',
+    description: 'Managers can see overdue, blocked, unassigned, or stuck work and decide where to step in next.',
     audience: 'Managers'
   },
   {
-    title: 'Inspect the team directory',
-    description: 'See supervisors, team members, and profile-ready roster details before diving into the dashboards.',
+    title: 'Run work from Worker Tracker',
+    description: 'Managers can drill from team to employee to task, then assign or reassign work from one calm surface.',
     audience: 'Managers'
   }
 ];
@@ -27,12 +27,12 @@ const commonJourneys = [
 const demoJourneys = [
   {
     title: 'Manager demo experience',
-    description: 'Use the manager login to access dashboards, team oversight, people tools, and goal tracking.',
+    description: 'Use the manager login to show the attention dashboard, Worker Tracker, team management, and task assignment flow.',
     audience: 'manager.demo@cloudcomputing.local'
   },
   {
     title: 'Employee demo experience',
-    description: 'Use the employee login to show personal tasks, profile details, goals, and supervisor access.',
+    description: 'Use the employee login to show join flow, My Tasks, Calendar, team membership, and profile settings.',
     audience: 'employee.one@cloudcomputing.local'
   },
   {
@@ -87,20 +87,20 @@ export default async function landingPage(container) {
     subtitle: 'These quick paths mirror the most useful flows in the app and point users toward the right sign-in experience.',
     items: [
       {
-        title: 'Find my assigned tasks and deadlines',
-        copy: 'Employees can review live assignments, due pressure, notes, and progress from the task dashboard.'
+        title: 'Join a team with a code or invite link',
+        copy: 'Employees can use a join code or invite link, become active members, and start seeing work immediately.'
       },
       {
-        title: 'Find my progress and goals',
-        copy: 'Employees can review completion trends, active goals, and the progress attached to their assigned work.'
+        title: 'Track my assigned work and mark it complete',
+        copy: 'Employees can manage progress, notes, and completion from My Tasks without digging through extra reporting surfaces.'
       },
       {
-        title: 'Review team performance and overdue work',
-        copy: 'Managers can review team performance, overdue tasks, workload, and monthly progress after signing in.'
+        title: 'Review overdue, blocked, or unassigned work',
+        copy: 'Managers can open the attention dashboard to find the work that needs a decision now.'
       },
       {
-        title: 'Open profiles, supervisors, and the team directory',
-        copy: 'The profile and people views help present the employee-side experience as a full workplace portal.'
+        title: 'Drill from team to employee to task',
+        copy: 'Worker Tracker lets managers move from team progress into employee workload and then into the underlying tasks.'
       }
     ]
   });
@@ -134,7 +134,7 @@ function buildNav() {
       el('div', { className: 'landing-nav__logo' }, 'TF'),
       el('div', { className: 'landing-nav__brand-copy' },
         el('strong', {}, 'TaskFlow'),
-        el('span', {}, 'Cloud workforce operations')
+        el('span', {}, 'Team task flow')
       )
     ),
     el('nav', { className: 'landing-nav__links' },
@@ -169,36 +169,36 @@ function buildNav() {
 function buildHero({ onSignIn, onJump }) {
   return el('section', { className: 'landing-hero', id: 'landing-home' },
     el('div', { className: 'landing-hero__content' },
-      el('p', { className: 'landing-kicker' }, 'Cloud-Based Workforce Task Management'),
-      el('h1', {}, 'User logins, team operations, and role-based workspace access in one place'),
+      el('p', { className: 'landing-kicker' }, 'Multi-team task assignment'),
+      el('h1', {}, 'Assign work, track completion, and keep teams moving without the dashboard clutter'),
       el('p', { className: 'landing-hero__description' },
-        'TaskFlow helps employees track work, managers monitor team performance, and both roles move through a cleaner workforce portal before entering the full application experience.'
+        'TaskFlow is a focused work-assignment product: managers organize teams and assign work, employees join teams and complete tasks, and both sides stay aligned on what is due next.'
       ),
       el('div', { className: 'landing-hero__actions' },
         el('button', { className: 'btn btn-primary btn-lg', type: 'button', onClick: onSignIn }, 'Go To Sign In'),
         el('button', { className: 'btn btn-outline btn-lg', type: 'button', onClick: () => onJump('landing-features') }, 'View Workflows')
       ),
       el('div', { className: 'landing-stat-row' },
-        landingStat('Employee workspace', 'Tasks, goals, profile, supervisors'),
-        landingStat('Manager control', 'Dashboard, goals, roster, metrics'),
-        landingStat('Role-based access', 'Clear entry points for employee and manager sign-in')
+        landingStat('Manager workflow', 'Dashboard, Worker Tracker, Teams, Tasks'),
+        landingStat('Employee workflow', 'Join, My Tasks, Calendar, Teams'),
+        landingStat('Product focus', 'Assignment, completion, and team visibility')
       )
     ),
     el('div', { className: 'landing-hero__panel' },
       el('div', { className: 'landing-hero-card' },
         el('span', { className: 'landing-hero-card__label' }, 'Platform overview'),
-        el('h3', {}, 'Built for daily workforce coordination'),
-        el('p', {}, 'Employees and managers each get a focused workspace with the right tools for task tracking, time logging, team visibility, and progress monitoring.'),
+        el('h3', {}, 'Built for day-to-day team execution'),
+        el('p', {}, 'Managers use a lightweight attention dashboard and Worker Tracker. Employees join teams, work through assigned tasks, and watch due dates in Calendar.'),
         el('div', { className: 'landing-hero-card__chips' },
-        el('span', { className: 'badge badge-primary' }, 'Role-based views'),
-        el('span', { className: 'badge badge-success' }, 'Task tracking'),
-        el('span', { className: 'badge badge-warning' }, 'Goals & quotas'),
-        el('span', { className: 'badge badge-info' }, 'Team visibility')
+        el('span', { className: 'badge badge-primary' }, 'Team-based work'),
+        el('span', { className: 'badge badge-success' }, 'Task execution'),
+        el('span', { className: 'badge badge-info' }, 'Join & membership'),
+        el('span', { className: 'badge badge-warning' }, 'Due-date visibility')
       )
       ),
       el('div', { className: 'landing-hero-note' },
         el('strong', {}, 'Sign-in guidance'),
-        el('p', {}, 'Choose the manager login for oversight features or the employee login for the self-service workspace and personal task view.')
+        el('p', {}, 'Use the manager login for team oversight and assignment. Use the employee login for join, tasks, calendar, and membership flows.')
       )
     )
   );
@@ -248,11 +248,11 @@ function buildSupportRail() {
       el('h3', {}, 'User Login Help & Support'),
       el('div', { className: 'landing-support-block' },
         el('strong', {}, 'Employees'),
-        el('p', {}, 'Use the employee login to see personal tasks, goals, supervisors, and your own profile details.')
+        el('p', {}, 'Use the employee login to join teams, work through assigned tasks, check due dates in Calendar, and manage membership.')
       ),
       el('div', { className: 'landing-support-block' },
         el('strong', {}, 'Managers'),
-        el('p', {}, 'Use the manager login to open dashboards, people directory, goal tracking, and team metrics.')
+        el('p', {}, 'Use the manager login to manage teams, share join access, assign work, and monitor team completion without analytics overload.')
       )
     ),
     el('div', { className: 'landing-support-card landing-support-card--accent' },

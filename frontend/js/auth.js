@@ -23,6 +23,22 @@ export function isEmployee() {
   return currentUser?.appRole === 'employee';
 }
 
+export function hasActiveTeams(user = currentUser) {
+  return Array.isArray(user?.teams) && user.teams.length > 0;
+}
+
+export function getDefaultAuthenticatedHash(user = currentUser) {
+  if (user?.appRole === 'employee' && !hasActiveTeams(user)) {
+    return '#/join';
+  }
+
+  if (user?.appRole === 'employee') {
+    return '#/tasks';
+  }
+
+  return '#/dashboard';
+}
+
 export async function login(email, password) {
   const { data } = await api.post('/auth/login', { email, password });
   localStorage.setItem('accessToken', data.session.accessToken);
@@ -42,13 +58,17 @@ export async function restoreSession() {
   const token = localStorage.getItem('accessToken');
   if (!token) return null;
   try {
-    const { data } = await api.get('/auth/me');
-    currentUser = data.user;
-    return currentUser;
+    return await refreshCurrentUser();
   } catch {
     currentUser = null;
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
     return null;
   }
+}
+
+export async function refreshCurrentUser() {
+  const { data } = await api.get('/auth/me');
+  currentUser = data.user;
+  return currentUser;
 }

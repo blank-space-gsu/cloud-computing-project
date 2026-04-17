@@ -165,6 +165,36 @@ describe("tasks routes", () => {
     expect(response.body.error.code).toBe("VALIDATION_ERROR");
   });
 
+  it("passes date-range filters to the task service", async () => {
+    listTasksForUser.mockResolvedValue({
+      tasks: [],
+      total: 0
+    });
+
+    const response = await request(app)
+      .get("/api/v1/tasks?dateFrom=2026-04-01&dateTo=2026-04-30&sortBy=dueAt")
+      .set("Authorization", "Bearer access-token");
+
+    expect(response.status).toBe(200);
+    expect(listTasksForUser).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        dateFrom: "2026-04-01",
+        dateTo: "2026-04-30",
+        sortBy: "dueAt"
+      })
+    );
+  });
+
+  it("rejects reversed date-range filters", async () => {
+    const response = await request(app)
+      .get("/api/v1/tasks?dateFrom=2026-04-30&dateTo=2026-04-01")
+      .set("Authorization", "Bearer access-token");
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe("VALIDATION_ERROR");
+  });
+
   it("deletes a task", async () => {
     deleteTaskForUser.mockResolvedValue({
       taskId

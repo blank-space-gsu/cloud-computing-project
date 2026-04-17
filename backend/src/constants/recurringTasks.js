@@ -1,0 +1,12 @@
+export const RECURRING_TASK_FREQUENCIES = {
+  DAILY: "daily",
+  WEEKLY: "weekly",
+  MONTHLY: "monthly"
+};
+
+export const RECURRING_TASK_FREQUENCY_VALUES = Object.values(
+  RECURRING_TASK_FREQUENCIES
+);
+
+export const RECURRING_TASK_GENERATION_PAST_DAYS = 14;
+export const RECURRING_TASK_GENERATION_FUTURE_DAYS = 42;

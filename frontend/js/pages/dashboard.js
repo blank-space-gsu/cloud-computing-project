@@ -5,12 +5,8 @@ import { renderHeader } from '../components/header.js';
 import { showLoading, hideLoading } from '../components/loading.js';
 import { emptyState } from '../components/emptyState.js';
 import { showError, showSuccess } from '../components/toast.js';
-import { doughnutChart, barChart, STATUS_COLORS } from '../components/charts.js';
 import {
   capitalize,
-  formatCompactNumber,
-  formatCurrency,
-  formatDateRange,
   formatNumber,
   formatPercent,
   formatShortDate,
@@ -20,18 +16,20 @@ import {
 import { getVisibleTeams, selectPreferredTeam } from '../utils/teams.js';
 
 export default async function dashboardPage(container) {
+  if (isEmployee()) {
+    window.location.hash = '#/tasks';
+    return;
+  }
+
   const user = getUser();
   renderHeader('Dashboard', `Welcome back, ${user.firstName}`);
   clearElement(container);
   showLoading(container);
 
   try {
-    if (isEmployee()) {
-      await renderEmployeeDashboard(container);
-    } else {
-      await renderManagerDashboard(container);
-    }
+    await renderManagerDashboard(container);
   } catch (err) {
+    if (!isDashboardViewActive()) return;
     showError(err);
     hideLoading(container);
     clearElement(container);
@@ -39,114 +37,13 @@ export default async function dashboardPage(container) {
   }
 }
 
-async function renderEmployeeDashboard(container) {
-  const user = getUser();
-
-  const [dashboardRes, goalsRes, tasksRes, teamsRes] = await Promise.all([
-    api.get('/dashboards/employee'),
-    api.get('/goals?sortBy=endDate&sortOrder=asc&includeCancelled=false&limit=4'),
-    api.get('/tasks?sortBy=urgency&sortOrder=asc&includeCompleted=false&page=1&limit=6'),
-    api.get('/teams')
-  ]);
-
-  clearElement(container);
-
-  const dashboard = dashboardRes.data;
-  const goals = goalsRes.data;
-  const tasks = tasksRes.data.tasks || [];
-  const summary = dashboard.summary || {};
-  const goalsSummary = goals.summary || {};
-  const preferredTeam = selectPreferredTeam(getVisibleTeams(teamsRes.data.teams || []));
-
-  const hero = buildHero({
-    eyebrow: 'Employee Overview',
-    title: 'Your task command center',
-    description: 'See the assignments, deadlines, and goal progress that matter most without extra clutter.',
-    meta: [
-      pill(`Team · ${preferredTeam?.name || user.teams?.[0]?.teamName || 'No team'}`),
-      pill(`Tasks this week · ${summary.currentWeekTaskCount || 0}`)
-    ],
-    className: 'page-hero page-hero--employee'
-  });
-
-  const overview = el('div', { className: 'dashboard-top-split dashboard-top-split--employee' },
-    hero,
-    summaryTableCard('At a glance', [
-      {
-        label: 'Assigned tasks',
-        value: formatCompactNumber(summary.assignedTaskCount || 0),
-        note: 'Current work assigned to you.'
-      },
-      {
-        label: 'Completion rate',
-        value: formatPercent(summary.completionRate || 0, 1),
-        note: 'How much assigned work is already finished.'
-      },
-      {
-        label: 'Average progress',
-        value: formatPercent(summary.averageProgressPercent || 0, 1),
-        note: 'Progress across your active tasks.'
-      },
-      {
-        label: 'Tasks this month',
-        value: formatCompactNumber(summary.currentMonthTaskCount || 0),
-        note: 'Work counted in the current month window.'
-      },
-      {
-        label: 'Active goals',
-        value: formatCompactNumber(goalsSummary.activeGoalCount || 0),
-        note: 'Current goals visible to you.'
-      }
-    ])
-  );
-
-  const charts = el('div', { className: 'chart-grid chart-grid--dashboard' },
-    chartCard('Weekly task completion', 'dash-employee-weekly', 'See how your recent tasks are grouped by week.'),
-    chartCard('Task status mix', 'dash-employee-status', 'A quick view of what is waiting, active, or blocked.')
-  );
-
-  requestAnimationFrame(() => barChart(
-    'dash-employee-weekly',
-    (dashboard.charts?.byWeek || []).map((point) => formatShortDate(point.weekStartDate)),
-    [{ label: 'Tasks', data: (dashboard.charts?.byWeek || []).map((point) => point.count), color: '#6366f1' }]
-  ));
-
-  requestAnimationFrame(() => doughnutChart(
-    'dash-employee-status',
-    (dashboard.charts?.byStatus || []).map((item) => item.status),
-    (dashboard.charts?.byStatus || []).map((item) => item.count),
-    STATUS_COLORS
-  ));
-
-  const sections = el('div', { className: 'dashboard-layout' },
-    stackedSection(
-      'My active tasks',
-      'Your prioritized task list for the current week.',
-      tasks.length
-        ? buildTaskAccordionList(tasks, {
-            onComplete: (task) => quickCompleteTask(task, () => renderEmployeeDashboard(container))
-          })
-        : emptyState('No active tasks', 'You do not have active tasks right now.')
-    ),
-    stackedSection(
-      'Upcoming deadlines',
-      'Ordered by urgency, with due pressure highlighted.',
-      deadlineList(dashboard.tasks?.upcomingDeadlines || [])
-    ),
-    stackedSection(
-      'Goal spotlight',
-      'Current quotas and shared targets in your scope.',
-      goals.goals?.length
-        ? el('div', { className: 'goal-spotlight-grid' }, ...goals.goals.slice(0, 3).map(goalSpotlightCard))
-        : emptyState('No goals yet', 'No goals are available for this employee profile.')
-    )
-  );
-
-  container.append(overview, charts, sections);
+function isDashboardViewActive() {
+  return (window.location.hash || '#/dashboard').startsWith('#/dashboard');
 }
 
 async function renderManagerDashboard(container) {
   const teamResponse = await api.get('/teams');
+  if (!isDashboardViewActive()) return;
   const teams = getVisibleTeams((teamResponse.data.teams || []).filter((team) => team.canManageTeam));
 
   clearElement(container);
@@ -189,25 +86,23 @@ async function renderManagerDashboard(container) {
     showLoading(content);
 
     try {
-      const [dashboardRes, productivityRes, goalsRes, tasksRes, teamMembersRes] = await Promise.all([
+      const [dashboardRes, productivityRes, tasksRes, teamMembersRes] = await Promise.all([
         api.get(`/dashboards/manager?teamId=${teamId}`),
         api.get(`/productivity-metrics?scope=team&teamId=${teamId}`),
-        api.get(`/goals?teamId=${teamId}&sortBy=endDate&sortOrder=asc&includeCancelled=false&limit=3`),
         api.get(`/tasks?teamId=${teamId}&sortBy=urgency&sortOrder=asc&includeCompleted=false&page=1&limit=8`),
         api.get(`/teams/${teamId}/members`)
       ]);
 
+      if (!isDashboardViewActive()) return;
       clearElement(content);
 
       const dashboard = dashboardRes.data;
       const productivity = productivityRes.data;
-      const goals = goalsRes.data;
       const tasks = tasksRes.data.tasks || [];
       const teamInfo = teamMembersRes.data.team || teams.find((team) => team.id === teamId);
       const mergedMembers = mergeMemberMetrics(teamMembersRes.data.members || [], productivity.breakdown?.members || []);
       const employeeRows = mergedMembers.filter((member) => member.appRole === 'employee');
       const summary = dashboard.summary || {};
-      const goalsSummary = goals.summary || {};
       const attentionTasks = buildManagerAttentionTasks(tasks, dashboard.tasks?.upcomingDeadlines || []);
       const blockedCount = tasks.filter((t) => t.status === 'blocked').length;
 
@@ -261,16 +156,15 @@ async function renderManagerDashboard(container) {
         )
       );
 
-      const goalsNudge = mgrGoalsNudge(goalsSummary, goals.goals || []);
-
       const layout = el('div', { className: 'mgr-flow' },
         attentionSection,
-        peopleSection,
-        goalsNudge
+        peopleSection
       );
 
+      if (!isDashboardViewActive()) return;
       content.append(header, statStrip, layout);
     } catch (err) {
+      if (!isDashboardViewActive()) return;
       showError(err);
       hideLoading(content);
       clearElement(content);
@@ -578,68 +472,6 @@ function mgrPeopleRow(member) {
     el('div', { className: 'mgr-people-row__meta' },
       el('span', { className: `badge badge-${signal.tone}` }, signal.label),
       el('span', {}, `${formatNumber(member.openTaskCount || 0)} open`)
-    )
-  );
-}
-
-function mgrGoalsNudge(goalsSummary, goals = []) {
-  const activeGoalCount = Number(goalsSummary.activeGoalCount || 0);
-  if (!activeGoalCount) return null;
-
-  const nextGoal = [...goals].find((goal) => !goal.isTargetMet) || goals[0];
-  const nextGoalDate = nextGoal?.endDate ? formatShortDate(nextGoal.endDate) : null;
-
-  return el('section', { className: 'card mgr-goals-nudge' },
-    el('div', { className: 'mgr-goals-nudge__copy' },
-      el('span', { className: 'mgr-goals-nudge__count' }, `${formatCompactNumber(activeGoalCount)} active ${activeGoalCount === 1 ? 'goal' : 'goals'}`),
-      el('span', { className: 'mgr-goals-nudge__next' },
-        nextGoal
-          ? `Next: ${nextGoal.title}${nextGoalDate ? ` · ${nextGoalDate}` : ''}`
-          : 'Review targets when ready.'
-      )
-    ),
-    dashboardActionButton('Open Goals', '#/goals', 'btn btn-outline btn-sm')
-  );
-}
-
-function deadlineList(tasks) {
-  if (!tasks.length) {
-    return emptyState('Nothing urgent', 'No deadline items are waiting right now.');
-  }
-
-  return el('div', { className: 'deadline-list' },
-    ...tasks.slice(0, 6).map((task) => el('div', { className: 'deadline-item' },
-      el('div', { className: 'deadline-item__main' },
-        el('strong', {}, task.title),
-        el('span', {}, task.assignment?.assigneeFullName || task.teamName || 'Unassigned')
-      ),
-      el('div', { className: 'deadline-item__meta' },
-        el('span', { className: `badge badge-${task.isOverdue ? 'danger' : task.isDueSoon ? 'warning' : 'default'}` }, task.isOverdue ? 'Overdue' : task.isDueSoon ? 'Due Soon' : capitalize(task.status)),
-        el('span', {}, task.dueAt ? formatShortDate(task.dueAt) : 'No due date'),
-        el('span', {}, formatTimeRemaining(task.timeRemainingSeconds))
-      )
-    ))
-  );
-}
-
-function goalSpotlightCard(goal) {
-  const valueText = goal.unit === 'USD'
-    ? `${formatCurrency(goal.actualValue, goal.unit)} / ${formatCurrency(goal.targetValue, goal.unit)}`
-    : `${formatNumber(goal.actualValue)} / ${formatNumber(goal.targetValue)} ${goal.unit}`;
-
-  return el('article', { className: 'goal-highlight-card' },
-    el('div', { className: 'goal-highlight-card__head' },
-      el('h4', {}, goal.title),
-      el('span', { className: `badge badge-${goal.isTargetMet ? 'success' : 'primary'}` }, goal.isTargetMet ? 'Met' : capitalize(goal.scope))
-    ),
-    el('p', { className: 'goal-highlight-card__meta' }, goal.targetUser ? goal.targetUser.fullName : goal.teamName),
-    el('div', { className: 'goal-highlight-card__value' }, valueText),
-    el('div', { className: 'progress-bar-container progress-bar-container--lg' },
-      el('div', { className: 'progress-bar', style: `width:${Math.min(100, goal.progressPercent || 0)}%` })
-    ),
-    el('div', { className: 'goal-highlight-card__footer' },
-      el('span', {}, `${formatPercent(goal.progressPercent || 0)} complete`),
-      el('span', {}, formatDateRange(goal.startDate, goal.endDate))
     )
   );
 }

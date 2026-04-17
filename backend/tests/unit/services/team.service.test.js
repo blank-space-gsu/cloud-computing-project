@@ -2,9 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 import {
   addTeamMemberForUser,
   createTeamForUser,
+  getTeamJoinAccessForUser,
   getTeamByIdForUser,
+  joinTeamForUser,
+  leaveTeamForUser,
   listTeamMembersForUser,
   listTeamsForUser,
+  regenerateTeamJoinAccessForUser,
   removeTeamMemberForUser,
   updateTeamForUser
 } from "../../../src/services/team.service.js";
@@ -101,7 +105,8 @@ describe("team service", () => {
     expect(result.team.canManageTeam).toBe(true);
     expect(result.members).toHaveLength(1);
     expect(listMembers).toHaveBeenCalledWith({
-      teamId: sampleTeam.id
+      teamId: sampleTeam.id,
+      membershipStatus: "active"
     });
   });
 
@@ -153,6 +158,8 @@ describe("team service", () => {
     });
     const insertTeamMember = vi.fn().mockResolvedValue({});
     const notifyTeamAdded = vi.fn().mockResolvedValue({});
+    const recordMembershipEvent = vi.fn().mockResolvedValue({});
+    const runTransaction = vi.fn(async (work) => work({}));
 
     const result = await addTeamMemberForUser(
       managerUser,
@@ -166,7 +173,9 @@ describe("team service", () => {
         findMember,
         findUser,
         insertTeamMember,
-        notifyTeamAdded
+        notifyTeamAdded,
+        recordMembershipEvent,
+        runTransaction
       }
     );
 
@@ -174,7 +183,7 @@ describe("team service", () => {
       teamId: sampleTeam.id,
       userId: "member-1",
       membershipRole: "member"
-    });
+    }, { pool: {} });
     expect(notifyTeamAdded).toHaveBeenCalledWith({
       userId: "member-1",
       teamId: sampleTeam.id,
@@ -186,7 +195,8 @@ describe("team service", () => {
   it("rejects duplicate team memberships", async () => {
     const findTeam = vi.fn().mockResolvedValue(sampleTeam);
     const findMember = vi.fn().mockResolvedValue({
-      id: "member-1"
+      id: "member-1",
+      membershipStatus: "active"
     });
 
     await expect(
@@ -208,17 +218,76 @@ describe("team service", () => {
     });
   });
 
+  it("reactivates an inactive membership when a manager adds the user back", async () => {
+    const findTeam = vi.fn().mockResolvedValue(sampleTeam);
+    const findMember = vi
+      .fn()
+      .mockResolvedValueOnce({
+        id: "member-1",
+        membershipRole: "member",
+        membershipStatus: "left"
+      })
+      .mockResolvedValueOnce({
+        id: "member-1",
+        fullName: "Ethan Employee",
+        membershipRole: "member",
+        membershipStatus: "active"
+      });
+    const findUser = vi.fn().mockResolvedValue({
+      id: "member-1",
+      isActive: true
+    });
+    const reactivateMember = vi.fn().mockResolvedValue({});
+    const recordMembershipEvent = vi.fn().mockResolvedValue({});
+    const notifyTeamAdded = vi.fn().mockResolvedValue({});
+    const runTransaction = vi.fn(async (work) => work({}));
+
+    const result = await addTeamMemberForUser(
+      managerUser,
+      sampleTeam.id,
+      {
+        userId: "member-1",
+        membershipRole: "member"
+      },
+      {
+        findTeam,
+        findMember,
+        findUser,
+        reactivateMember,
+        recordMembershipEvent,
+        notifyTeamAdded,
+        runTransaction
+      }
+    );
+
+    expect(reactivateMember).toHaveBeenCalledWith(
+      {
+        teamId: sampleTeam.id,
+        userId: "member-1",
+        membershipRole: "member"
+      },
+      { pool: {} }
+    );
+    expect(recordMembershipEvent).toHaveBeenCalled();
+    expect(result.member.membershipStatus).toBe("active");
+  });
+
   it("removes team members", async () => {
     const findTeam = vi.fn().mockResolvedValue(sampleTeam);
     const findMember = vi.fn().mockResolvedValue({
       id: "member-1",
-      membershipRole: "member"
+      membershipRole: "member",
+      membershipStatus: "active"
     });
     const removeTeamMember = vi.fn().mockResolvedValue({
-      team_id: sampleTeam.id,
-      user_id: "member-1",
-      membership_role: "member"
+      teamId: sampleTeam.id,
+      userId: "member-1",
+      membershipRole: "member",
+      membershipStatus: "removed"
     });
+    const recordMembershipEvent = vi.fn().mockResolvedValue({});
+    const countOpenAssignments = vi.fn().mockResolvedValue(0);
+    const runTransaction = vi.fn(async (work) => work({}));
 
     const result = await removeTeamMemberForUser(
       managerUser,
@@ -227,14 +296,251 @@ describe("team service", () => {
       {
         findTeam,
         findMember,
-        removeTeamMember
+        removeTeamMember,
+        recordMembershipEvent,
+        countOpenAssignments,
+        runTransaction
       }
     );
 
     expect(removeTeamMember).toHaveBeenCalledWith({
       teamId: sampleTeam.id,
       userId: "member-1"
-    });
+    }, { pool: {} });
     expect(result.userId).toBe("member-1");
+    expect(result.membershipStatus).toBe("removed");
+  });
+
+  it("loads current team join access for managers", async () => {
+    const findTeam = vi.fn().mockResolvedValue(sampleTeam);
+    const listTokens = vi.fn().mockResolvedValue([
+      {
+        tokenType: "join_code",
+        tokenValue: "OPS12345"
+      },
+      {
+        tokenType: "invite_link",
+        tokenValue: "invite-token"
+      }
+    ]);
+
+    const result = await getTeamJoinAccessForUser(managerUser, sampleTeam.id, {
+      findTeam,
+      listTokens
+    });
+
+    expect(result.joinAccess.joinCode).toBe("OPS12345");
+    expect(result.joinAccess.inviteUrl).toContain("invite-token");
+  });
+
+  it("regenerates team join access for managers", async () => {
+    const findTeam = vi.fn().mockResolvedValue(sampleTeam);
+    const revokeTokens = vi.fn().mockResolvedValue(2);
+    const insertToken = vi
+      .fn()
+      .mockResolvedValueOnce({
+        tokenType: "join_code",
+        tokenValue: "OPS12345"
+      })
+      .mockResolvedValueOnce({
+        tokenType: "invite_link",
+        tokenValue: "invite-token"
+      });
+    const runTransaction = vi.fn(async (work) => work({}));
+
+    const result = await regenerateTeamJoinAccessForUser(
+      managerUser,
+      sampleTeam.id,
+      {
+        findTeam,
+        revokeTokens,
+        insertToken,
+        runTransaction
+      }
+    );
+
+    expect(revokeTokens).toHaveBeenCalledWith(
+      { teamId: sampleTeam.id },
+      { pool: {} }
+    );
+    expect(insertToken).toHaveBeenCalledTimes(2);
+    expect(result.joinAccess.joinCode).toBe("OPS12345");
+  });
+
+  it("joins a team with valid employee join access", async () => {
+    const findAccessToken = vi.fn().mockResolvedValue({
+      id: "token-1",
+      teamId: sampleTeam.id,
+      tokenType: "join_code",
+      tokenValue: "OPS12345",
+      isActive: true,
+      revokedAt: null,
+      expiresAt: null
+    });
+    const findTeam = vi.fn().mockResolvedValue(sampleTeam);
+    const findMember = vi.fn().mockResolvedValue(null);
+    const insertTeamMember = vi.fn().mockResolvedValue({
+      teamId: sampleTeam.id,
+      userId: employeeUser.id,
+      membershipRole: "member",
+      membershipStatus: "active"
+    });
+    const recordMembershipEvent = vi.fn().mockResolvedValue({});
+    const runTransaction = vi.fn(async (work) => work({}));
+
+    const result = await joinTeamForUser(
+      employeeUser,
+      { joinCode: "OPS12345" },
+      {
+        findAccessToken,
+        findTeam,
+        findMember,
+        insertTeamMember,
+        recordMembershipEvent,
+        runTransaction
+      }
+    );
+
+    expect(insertTeamMember).toHaveBeenCalledWith(
+      {
+        teamId: sampleTeam.id,
+        userId: employeeUser.id,
+        membershipRole: "member"
+      },
+      { pool: {} }
+    );
+    expect(result.rejoined).toBe(false);
+  });
+
+  it("reactivates a left membership on self-rejoin", async () => {
+    const findAccessToken = vi.fn().mockResolvedValue({
+      id: "token-1",
+      teamId: sampleTeam.id,
+      tokenType: "invite_link",
+      tokenValue: "invite-token",
+      isActive: true,
+      revokedAt: null,
+      expiresAt: null
+    });
+    const findTeam = vi.fn().mockResolvedValue(sampleTeam);
+    const findMember = vi.fn().mockResolvedValue({
+      id: employeeUser.id,
+      membershipRole: "member",
+      membershipStatus: "left"
+    });
+    const reactivateMember = vi.fn().mockResolvedValue({
+      teamId: sampleTeam.id,
+      userId: employeeUser.id,
+      membershipRole: "member",
+      membershipStatus: "active"
+    });
+    const recordMembershipEvent = vi.fn().mockResolvedValue({});
+    const runTransaction = vi.fn(async (work) => work({}));
+
+    const result = await joinTeamForUser(
+      employeeUser,
+      { inviteToken: "invite-token" },
+      {
+        findAccessToken,
+        findTeam,
+        findMember,
+        reactivateMember,
+        recordMembershipEvent,
+        runTransaction
+      }
+    );
+
+    expect(reactivateMember).toHaveBeenCalled();
+    expect(result.rejoined).toBe(true);
+  });
+
+  it("rejects revoked join access", async () => {
+    const findAccessToken = vi.fn().mockResolvedValue({
+      id: "token-1",
+      teamId: sampleTeam.id,
+      isActive: false,
+      revokedAt: "2026-04-17T00:00:00.000Z",
+      expiresAt: null
+    });
+
+    await expect(
+      joinTeamForUser(employeeUser, { joinCode: "OPS12345" }, { findAccessToken })
+    ).rejects.toMatchObject({
+      statusCode: 400,
+      code: "TEAM_JOIN_ACCESS_REVOKED"
+    });
+  });
+
+  it("rejects expired join access", async () => {
+    const findAccessToken = vi.fn().mockResolvedValue({
+      id: "token-1",
+      teamId: sampleTeam.id,
+      isActive: true,
+      revokedAt: null,
+      expiresAt: "2020-01-01T00:00:00.000Z"
+    });
+
+    await expect(
+      joinTeamForUser(employeeUser, { joinCode: "OPS12345" }, { findAccessToken })
+    ).rejects.toMatchObject({
+      statusCode: 400,
+      code: "TEAM_JOIN_ACCESS_EXPIRED"
+    });
+  });
+
+  it("blocks employee leave when open assignments still exist", async () => {
+    const findMember = vi.fn().mockResolvedValue({
+      id: employeeUser.id,
+      membershipRole: "member",
+      membershipStatus: "active"
+    });
+    const countOpenAssignments = vi.fn().mockResolvedValue(2);
+
+    await expect(
+      leaveTeamForUser(employeeUser, sampleTeam.id, {
+        findMember,
+        countOpenAssignments
+      })
+    ).rejects.toMatchObject({
+      statusCode: 400,
+      code: "TEAM_LEAVE_BLOCKED_OPEN_ASSIGNMENTS"
+    });
+  });
+
+  it("allows an employee to leave a team when no open assignments remain", async () => {
+    const findMember = vi.fn().mockResolvedValue({
+      id: employeeUser.id,
+      membershipRole: "member",
+      membershipStatus: "active"
+    });
+    const countOpenAssignments = vi.fn().mockResolvedValue(0);
+    const findTeam = vi.fn().mockResolvedValue(sampleTeam);
+    const leaveMember = vi.fn().mockResolvedValue({
+      teamId: sampleTeam.id,
+      userId: employeeUser.id,
+      membershipRole: "member",
+      membershipStatus: "left",
+      leftAt: "2026-04-17T00:00:00.000Z"
+    });
+    const recordMembershipEvent = vi.fn().mockResolvedValue({});
+    const runTransaction = vi.fn(async (work) => work({}));
+
+    const result = await leaveTeamForUser(employeeUser, sampleTeam.id, {
+      findMember,
+      countOpenAssignments,
+      findTeam,
+      leaveMember,
+      recordMembershipEvent,
+      runTransaction
+    });
+
+    expect(leaveMember).toHaveBeenCalledWith(
+      {
+        teamId: sampleTeam.id,
+        userId: employeeUser.id
+      },
+      { pool: {} }
+    );
+    expect(result.membership.membershipStatus).toBe("left");
   });
 });

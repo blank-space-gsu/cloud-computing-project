@@ -8,10 +8,27 @@ import { showError, showSuccess } from '../components/toast.js';
 import { openModal, closeModal } from '../components/modal.js';
 import { taskCard } from '../components/taskCard.js';
 import { statusLabel, priorityLabel, formatDate, mondayDateString } from '../utils/format.js';
-import { getVisibleTeams, selectPreferredTeam } from '../utils/teams.js';
 
 let currentPage = 1;
 const PAGE_LIMIT = 12;
+const WEEKDAY_OPTIONS = [
+  ['Sun', 0],
+  ['Mon', 1],
+  ['Tue', 2],
+  ['Wed', 3],
+  ['Thu', 4],
+  ['Fri', 5],
+  ['Sat', 6]
+];
+
+const localDateInputValue = (value = new Date()) => {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const weekdayFromIsoDate = (value) => new Date(`${value}T12:00:00`).getDay();
 
 export default async function tasksPage(container) {
   renderHeader('Tasks', isManager() ? 'Manage team tasks' : 'Your assigned tasks');
@@ -84,13 +101,48 @@ function openEmployeeEditModal(task, container) {
       el('label', { className: 'form-label' }, 'Notes'), notesInput)
   );
 
-  const saveBtn = el('button', { className: 'btn btn-primary', type: 'button' }, 'Save Changes');
+  const clampProgress = (value) => {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isNaN(parsed)) return 0;
+    return Math.max(0, Math.min(parsed, 100));
+  };
+
+  const syncEmployeeTaskState = (source) => {
+    const progressValue = clampProgress(progressInput.value);
+    progressInput.value = String(progressValue);
+
+    if (statusSelect.value === 'completed') {
+      progressInput.value = '100';
+      return;
+    }
+
+    if (source === 'progress' && progressValue === 100) {
+      statusSelect.value = 'completed';
+      return;
+    }
+
+    if (source === 'progress' && progressValue > 0 && statusSelect.value === 'todo') {
+      statusSelect.value = 'in_progress';
+      return;
+    }
+
+    if (source === 'progress' && progressValue === 0 && statusSelect.value === 'completed') {
+      statusSelect.value = 'todo';
+    }
+  };
+
+  statusSelect.addEventListener('change', () => syncEmployeeTaskState('status'));
+  progressInput.addEventListener('input', () => syncEmployeeTaskState('progress'));
+  syncEmployeeTaskState('status');
+
+  const saveBtn = el('button', { className: 'btn btn-primary', type: 'button' }, 'Save Progress');
   saveBtn.addEventListener('click', async () => {
     saveBtn.disabled = true;
     try {
+      const progressValue = clampProgress(progressInput.value);
       await api.patch(`/tasks/${task.id}`, {
         status: statusSelect.value,
-        progressPercent: parseInt(progressInput.value, 10),
+        progressPercent: progressValue,
         notes: notesInput.value || null
       });
       showSuccess('Task updated!');
@@ -114,12 +166,12 @@ async function renderManagerTasks(container) {
   let teams = [];
   try {
     const res = await api.get('/teams');
-    teams = getVisibleTeams(res.data.teams || []);
+    teams = (res.data.teams || []).filter((team) => team.canManageTeam);
   } catch { /* ignore */ }
 
   clearElement(container);
 
-  const state = { teamId: selectPreferredTeam(teams)?.id || teams[0]?.id || '', status: '', priority: '', assigneeUserId: '', page: 1 };
+  const state = { teamId: teams[0]?.id || '', status: '', priority: '', assigneeUserId: '', page: 1 };
   let members = [];
 
   const filtersBar = el('div', { className: 'filters-bar' });
@@ -133,6 +185,8 @@ async function renderManagerTasks(container) {
       state.page = 1;
       members = await loadMembers(state.teamId);
       updateAssigneeSel(assigneeSel, members);
+      createBtn.disabled = !state.teamId;
+      recurringBtn.disabled = !state.teamId;
       await loadTasks();
     });
     filtersBar.appendChild(el('div', { className: 'filter-group' }, el('label', {}, 'Team'), teamSel));
@@ -148,7 +202,14 @@ async function renderManagerTasks(container) {
   );
 
   const createBtn = el('button', { className: 'btn btn-primary', onClick: () => openCreateTaskModal(state.teamId, members, container, loadTasks) }, '+ New Task');
-  filtersBar.appendChild(createBtn);
+  const recurringBtn = el(
+    'button',
+    { className: 'btn btn-outline', onClick: () => openRecurringTaskModal(state.teamId, members, loadTasks) },
+    '+ Recurring Task'
+  );
+  createBtn.disabled = !state.teamId;
+  recurringBtn.disabled = !state.teamId;
+  filtersBar.appendChild(el('div', { className: 'filters-bar__actions btn-group' }, createBtn, recurringBtn));
 
   const taskArea = el('div');
   container.append(filtersBar, taskArea);
@@ -180,6 +241,7 @@ async function renderManagerTasks(container) {
       const list = el('div', { className: 'task-list' });
       for (const t of tasks) {
         list.appendChild(taskCard(t, {
+          variant: 'manager',
           showAssignee: true,
           onComplete: (task) => quickCompleteTask(task, loadTasks),
           onEdit: (task) => openManagerEditModal(task, loadTasks),
@@ -222,6 +284,199 @@ function filterSelect(label, options, onChange) {
   for (const [val, text] of options) sel.appendChild(el('option', { value: val }, text));
   sel.addEventListener('change', () => onChange(sel.value));
   return el('div', { className: 'filter-group' }, el('label', {}, label), sel);
+}
+
+function openRecurringTaskModal(teamId, members, reload) {
+  if (!teamId) {
+    showError('Select a team first.');
+    return;
+  }
+
+  const startDate = localDateInputValue();
+  const titleInput = el('input', { className: 'form-input', name: 'title', required: true, placeholder: 'Recurring task title' });
+  const descInput = el('textarea', { className: 'form-textarea', name: 'description', placeholder: 'Optional description' });
+  const prioritySel = el('select', { className: 'form-select', name: 'priority' },
+    ...['medium', 'low', 'high', 'urgent'].map(p => el('option', { value: p }, priorityLabel(p)))
+  );
+  const assigneeSel = el('select', { className: 'form-select', name: 'defaultAssignee' }, el('option', { value: '' }, 'Unassigned by default'));
+  for (const m of members) {
+    assigneeSel.appendChild(el('option', { value: m.id }, m.fullName || `${m.firstName} ${m.lastName}`));
+  }
+  const frequencySel = el('select', { className: 'form-select', name: 'frequency' },
+    el('option', { value: 'daily' }, 'Daily'),
+    el('option', { value: 'weekly' }, 'Weekly'),
+    el('option', { value: 'monthly' }, 'Monthly')
+  );
+  const dueTimeInput = el('input', { className: 'form-input', name: 'dueTime', type: 'time', value: '09:00', required: true });
+  const startsOnInput = el('input', { className: 'form-input', name: 'startsOn', type: 'date', value: startDate, required: true });
+  const endsOnInput = el('input', { className: 'form-input', name: 'endsOn', type: 'date' });
+  const dayOfMonthInput = el('input', {
+    className: 'form-input',
+    name: 'dayOfMonth',
+    type: 'number',
+    min: '1',
+    max: '31',
+    value: String(new Date(`${startDate}T12:00:00`).getDate())
+  });
+
+  const weekdayInputs = WEEKDAY_OPTIONS.map(([label, value]) => {
+    const input = el('input', {
+      type: 'checkbox',
+      value: String(value),
+      checked: value === weekdayFromIsoDate(startDate)
+    });
+
+    return {
+      value,
+      input,
+      wrapper: el(
+        'label',
+        { className: 'weekday-option' },
+        input,
+        el('span', {}, label)
+      )
+    };
+  });
+
+  const weeklyGroup = el(
+    'div',
+    { className: 'form-group' },
+    el('label', { className: 'form-label' }, 'Weekdays'),
+    el('div', { className: 'weekday-picker' }, ...weekdayInputs.map((option) => option.wrapper))
+  );
+
+  const monthlyGroup = el(
+    'div',
+    { className: 'form-group' },
+    el('label', { className: 'form-label' }, 'Day of Month'),
+    dayOfMonthInput
+  );
+
+  const form = el('form', {},
+    el('div', { className: 'form-group' },
+      el('label', { className: 'form-label' }, 'Title'),
+      titleInput
+    ),
+    el('div', { className: 'form-group' },
+      el('label', { className: 'form-label' }, 'Description'),
+      descInput
+    ),
+    el('div', { className: 'form-row' },
+      el('div', { className: 'form-group' },
+        el('label', { className: 'form-label' }, 'Priority'),
+        prioritySel
+      ),
+      el('div', { className: 'form-group' },
+        el('label', { className: 'form-label' }, 'Default Assignee'),
+        assigneeSel
+      )
+    ),
+    el('div', { className: 'form-row' },
+      el('div', { className: 'form-group' },
+        el('label', { className: 'form-label' }, 'Frequency'),
+        frequencySel
+      ),
+      el('div', { className: 'form-group' },
+        el('label', { className: 'form-label' }, 'Due Time'),
+        dueTimeInput
+      )
+    ),
+    el('div', { className: 'form-row' },
+      el('div', { className: 'form-group' },
+        el('label', { className: 'form-label' }, 'Starts On'),
+        startsOnInput
+      ),
+      el('div', { className: 'form-group' },
+        el('label', { className: 'form-label' }, 'Ends On'),
+        endsOnInput
+      )
+    ),
+    weeklyGroup,
+    monthlyGroup
+  );
+
+  const syncRecurringFields = () => {
+    const frequency = frequencySel.value;
+    weeklyGroup.style.display = frequency === 'weekly' ? '' : 'none';
+    monthlyGroup.style.display = frequency === 'monthly' ? '' : 'none';
+
+    if (frequency === 'weekly' && !weekdayInputs.some(({ input }) => input.checked)) {
+      const defaultWeekday = weekdayFromIsoDate(startsOnInput.value || localDateInputValue());
+      const matching = weekdayInputs.find((option) => option.value === defaultWeekday);
+      if (matching) matching.input.checked = true;
+    }
+
+    if (frequency === 'monthly' && !dayOfMonthInput.value) {
+      dayOfMonthInput.value = String(new Date(`${startsOnInput.value || localDateInputValue()}T12:00:00`).getDate());
+    }
+  };
+
+  frequencySel.addEventListener('change', syncRecurringFields);
+  startsOnInput.addEventListener('change', syncRecurringFields);
+  syncRecurringFields();
+
+  const saveBtn = el('button', { className: 'btn btn-primary' }, 'Create Rule');
+  saveBtn.addEventListener('click', async () => {
+    const title = titleInput.value.trim();
+    if (!title) {
+      showError('Title is required.');
+      return;
+    }
+
+    const weekdays = weekdayInputs
+      .filter(({ input }) => input.checked)
+      .map(({ input }) => Number(input.value));
+
+    if (frequencySel.value === 'weekly' && weekdays.length === 0) {
+      showError('Select at least one weekday for a weekly recurring task.');
+      return;
+    }
+
+    if (frequencySel.value === 'monthly' && !dayOfMonthInput.value) {
+      showError('Choose a day of month for a monthly recurring task.');
+      return;
+    }
+
+    saveBtn.disabled = true;
+
+    const body = {
+      teamId,
+      title,
+      description: descInput.value || undefined,
+      priority: prioritySel.value,
+      defaultAssigneeUserId: assigneeSel.value || undefined,
+      frequency: frequencySel.value,
+      dueTime: dueTimeInput.value,
+      startsOn: startsOnInput.value
+    };
+
+    if (endsOnInput.value) {
+      body.endsOn = endsOnInput.value;
+    }
+
+    if (frequencySel.value === 'weekly') {
+      body.weekdays = weekdays;
+    }
+
+    if (frequencySel.value === 'monthly') {
+      body.dayOfMonth = Number(dayOfMonthInput.value);
+    }
+
+    try {
+      await api.post('/recurring-task-rules', body);
+      showSuccess('Recurring task rule created.');
+      closeModal();
+      await reload();
+    } catch (err) {
+      showError(err);
+      saveBtn.disabled = false;
+    }
+  });
+
+  openModal('Create Recurring Task', form, el('div', { className: 'btn-group' },
+    el('button', { className: 'btn btn-outline', onClick: closeModal }, 'Cancel'),
+    saveBtn
+  ));
 }
 
 function openCreateTaskModal(teamId, members, container, reload) {
@@ -379,6 +634,9 @@ function openAssignModal(task, teamId, members, reload) {
   for (const m of members) {
     sel.appendChild(el('option', { value: m.id }, m.fullName || `${m.firstName} ${m.lastName}`));
   }
+  if (task.assignment?.assigneeUserId) {
+    sel.value = task.assignment.assigneeUserId;
+  }
   const noteInput = el('textarea', { className: 'form-textarea', name: 'note', placeholder: 'Optional assignment note' });
 
   const form = el('div', {},
@@ -388,7 +646,8 @@ function openAssignModal(task, teamId, members, reload) {
       el('label', { className: 'form-label' }, 'Note'), noteInput)
   );
 
-  const saveBtn = el('button', { className: 'btn btn-primary' }, 'Assign');
+  const isReassignment = Boolean(task.assignment);
+  const saveBtn = el('button', { className: 'btn btn-primary' }, isReassignment ? 'Reassign' : 'Assign');
   saveBtn.addEventListener('click', async () => {
     if (!sel.value) { showError('Select an employee'); return; }
     saveBtn.disabled = true;
@@ -407,7 +666,7 @@ function openAssignModal(task, teamId, members, reload) {
     }
   });
 
-  openModal(`Assign: ${task.title}`, form, el('div', { className: 'btn-group' },
+  openModal(`${isReassignment ? 'Reassign' : 'Assign'}: ${task.title}`, form, el('div', { className: 'btn-group' },
     el('button', { className: 'btn btn-outline', onClick: closeModal }, 'Cancel'), saveBtn));
 }
 

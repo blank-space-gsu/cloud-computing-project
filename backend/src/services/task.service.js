@@ -4,10 +4,12 @@ import {
   TASK_SORT_FIELDS,
   TASK_STATUSES
 } from "../constants/tasks.js";
+import { TASK_UPDATE_TYPES } from "../constants/taskUpdates.js";
 import { getPool } from "../db/pool.js";
 import {
   createTask,
   createTaskAssignment,
+  createTaskUpdate,
   deactivateActiveTaskAssignment,
   deleteTaskById,
   findAssignableUserInTeam,
@@ -17,9 +19,11 @@ import {
 } from "../repositories/task.repository.js";
 import { findAccessibleTeamById } from "../repositories/team.repository.js";
 import { createAppError } from "../utils/appError.js";
+import { ensureRecurringTasksGeneratedForUser } from "./recurringTaskRule.service.js";
 
 const TEAM_MANAGER_MEMBERSHIP_ROLE = "manager";
 const EMPLOYEE_EDITABLE_FIELDS = new Set(["status", "progressPercent", "notes"]);
+const TASK_UPDATE_TRACKED_FIELDS = new Set(["status", "progressPercent", "notes"]);
 
 const isPrivilegedUser = (authUser) => PRIVILEGED_ROLES.includes(authUser.appRole);
 const isAdminUser = (authUser) => authUser.appRole === APP_ROLES.ADMIN;
@@ -135,6 +139,17 @@ const buildEmployeeTaskPatch = (patch) => {
   return patch;
 };
 
+const shouldTrackTaskUpdate = (patch) =>
+  Object.keys(patch).some((field) => TASK_UPDATE_TRACKED_FIELDS.has(field));
+
+const buildTrackedTaskState = (existingTask, patch) => ({
+  statusAfter: Object.hasOwn(patch, "status") ? patch.status : existingTask.status,
+  progressPercentAfter: Object.hasOwn(patch, "progressPercent")
+    ? patch.progressPercent
+    : existingTask.progressPercent,
+  note: Object.hasOwn(patch, "notes") ? patch.notes : existingTask.notes
+});
+
 const runInTransaction = async (
   work,
   { pool = getPool() } = {}
@@ -157,7 +172,10 @@ const runInTransaction = async (
 export const listTasksForUser = async (
   authUser,
   filters,
-  { listTasks = listAccessibleTasks } = {}
+  {
+    listTasks = listAccessibleTasks,
+    ensureGenerated = ensureRecurringTasksGeneratedForUser
+  } = {}
 ) => {
   const scopedFilters = {
     ...filters,
@@ -168,6 +186,8 @@ export const listTasksForUser = async (
   if (authUser.appRole === APP_ROLES.EMPLOYEE) {
     scopedFilters.assigneeUserId = authUser.id;
   }
+
+  await ensureGenerated(authUser, scopedFilters);
 
   return listTasks({
     actorUserId: authUser.id,
@@ -188,6 +208,8 @@ export const createTaskForUser = async (
   {
     findTeam = findAccessibleTeamById,
     insertTask = createTask,
+    insertTaskUpdate = createTaskUpdate,
+    runTransaction = runInTransaction,
     findTask = findTaskByIdForActor
   } = {}
 ) => {
@@ -200,11 +222,30 @@ export const createTaskForUser = async (
   await ensureTeamCanBeManaged(authUser, input.teamId, { findTeam });
 
   const taskPayload = buildTaskMutationPayload(input);
-  const taskId = await insertTask({
-    ...taskPayload,
-    teamId: input.teamId,
-    createdByUserId: authUser.id,
-    updatedByUserId: authUser.id
+  const taskId = await runTransaction(async (client) => {
+    const createdTaskId = await insertTask(
+      {
+        ...taskPayload,
+        teamId: input.teamId,
+        createdByUserId: authUser.id,
+        updatedByUserId: authUser.id
+      },
+      { pool: client }
+    );
+
+    await insertTaskUpdate(
+      {
+        taskId: createdTaskId,
+        updatedByUserId: authUser.id,
+        updateType: TASK_UPDATE_TYPES.CREATED,
+        statusAfter: taskPayload.status,
+        progressPercentAfter: taskPayload.progressPercent,
+        note: taskPayload.notes ?? null
+      },
+      { pool: client }
+    );
+
+    return createdTaskId;
   });
 
   return ensureTaskAccessible(authUser, taskId, { findTask });
@@ -216,19 +257,45 @@ export const updateTaskForUser = async (
   patch,
   {
     findTask = findTaskByIdForActor,
-    updateTask = updateTaskById
+    updateTask = updateTaskById,
+    insertTaskUpdate = createTaskUpdate,
+    runTransaction = runInTransaction
   } = {}
 ) => {
-  await ensureTaskAccessible(authUser, taskId, { findTask });
+  const existingTask = await ensureTaskAccessible(authUser, taskId, { findTask });
 
   const allowedPatch = isPrivilegedUser(authUser)
     ? patch
     : buildEmployeeTaskPatch(patch);
   const taskPayload = buildTaskMutationPayload(allowedPatch, true);
+  const shouldPersistTaskUpdate = shouldTrackTaskUpdate(taskPayload);
+  const trackedTaskState = buildTrackedTaskState(existingTask, taskPayload);
+  const updateType = trackedTaskState.statusAfter === TASK_STATUSES.COMPLETED &&
+    existingTask.status !== TASK_STATUSES.COMPLETED
+    ? TASK_UPDATE_TYPES.COMPLETED
+    : TASK_UPDATE_TYPES.UPDATED;
 
-  await updateTask(taskId, {
-    ...taskPayload,
-    updatedByUserId: authUser.id
+  await runTransaction(async (client) => {
+    await updateTask(
+      taskId,
+      {
+        ...taskPayload,
+        updatedByUserId: authUser.id
+      },
+      { pool: client }
+    );
+
+    if (shouldPersistTaskUpdate) {
+      await insertTaskUpdate(
+        {
+          taskId,
+          updatedByUserId: authUser.id,
+          updateType,
+          ...trackedTaskState
+        },
+        { pool: client }
+      );
+    }
   });
 
   return ensureTaskAccessible(authUser, taskId, { findTask });
@@ -272,6 +339,7 @@ export const assignTaskForUser = async (
     findAssignee = findAssignableUserInTeam,
     closeActiveAssignment = deactivateActiveTaskAssignment,
     insertTaskAssignment = createTaskAssignment,
+    insertTaskUpdate = createTaskUpdate,
     updateTask = updateTaskById,
     runTransaction = runInTransaction
   } = {}
@@ -326,6 +394,19 @@ export const assignTaskForUser = async (
       input.taskId,
       {
         updatedByUserId: authUser.id
+      },
+      { pool: client }
+    );
+
+    await insertTaskUpdate(
+      {
+        taskId: input.taskId,
+        updatedByUserId: authUser.id,
+        updateType: TASK_UPDATE_TYPES.ASSIGNED,
+        statusAfter: task.status,
+        progressPercentAfter: task.progressPercent,
+        note: input.assignmentNote ?? null,
+        assigneeUserId: input.assigneeUserId
       },
       { pool: client }
     );

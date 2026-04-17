@@ -1,5 +1,6 @@
 import { APP_ROLES } from "../constants/roles.js";
 import { TASK_STATUSES } from "../constants/tasks.js";
+import { TEAM_MEMBERSHIP_STATUSES } from "../constants/teamMemberships.js";
 import { getPool } from "../db/pool.js";
 
 const CLOSED_TASK_STATUSES = new Set([
@@ -26,6 +27,11 @@ const mapTaskRow = (row) => {
     priority: row.priority,
     dueAt,
     weekStartDate: row.week_start_date?.toISOString?.().slice(0, 10) ?? row.week_start_date,
+    recurringRuleId: row.recurring_rule_id ?? null,
+    generatedForDate:
+      row.generated_for_date?.toISOString?.().slice(0, 10)
+      ?? row.generated_for_date
+      ?? null,
     estimatedHours:
       row.estimated_hours === null || row.estimated_hours === undefined
         ? null
@@ -81,6 +87,8 @@ const taskSelectColumns = `
   t.priority,
   t.due_at,
   t.week_start_date,
+  t.recurring_rule_id,
+  t.generated_for_date,
   t.estimated_hours,
   t.progress_percent,
   t.created_by_user_id,
@@ -123,6 +131,7 @@ const addAccessScope = ({ actorUserId, actorAppRole }, values, whereClauses) => 
         from public.team_members viewer_tm
         where viewer_tm.team_id = t.team_id
           and viewer_tm.user_id = $${values.length}
+          and viewer_tm.membership_status = '${TEAM_MEMBERSHIP_STATUSES.ACTIVE}'
           and viewer_tm.membership_role = 'manager'
       )
     `);
@@ -156,6 +165,16 @@ const addListFilters = (filters, values, whereClauses) => {
   if (filters.weekStartDate) {
     values.push(filters.weekStartDate);
     whereClauses.push(`t.week_start_date = $${values.length}::date`);
+  }
+
+  if (filters.dateFrom) {
+    values.push(filters.dateFrom);
+    whereClauses.push(`t.due_at >= $${values.length}::date`);
+  }
+
+  if (filters.dateTo) {
+    values.push(filters.dateTo);
+    whereClauses.push(`t.due_at < ($${values.length}::date + interval '1 day')`);
   }
 
   if (filters.includeCompleted === false) {
@@ -282,13 +301,15 @@ export const createTask = async (
         priority,
         due_at,
         week_start_date,
+        recurring_rule_id,
+        generated_for_date,
         estimated_hours,
         progress_percent,
         created_by_user_id,
         updated_by_user_id,
         completed_at
       )
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
       returning id
     `,
     [
@@ -300,6 +321,8 @@ export const createTask = async (
       task.priority,
       task.dueAt ?? null,
       task.weekStartDate,
+      task.recurringRuleId ?? null,
+      task.generatedForDate ?? null,
       task.estimatedHours ?? null,
       task.progressPercent,
       task.createdByUserId,
@@ -395,11 +418,33 @@ export const findAssignableUserInTeam = async (
         on tm.user_id = u.id
       where tm.team_id = $1
         and u.id = $2
+        and tm.membership_status = '${TEAM_MEMBERSHIP_STATUSES.ACTIVE}'
     `,
     [teamId, userId]
   );
 
   return result.rows[0] ? mapAssignableUser(result.rows[0]) : null;
+};
+
+export const countOpenActiveAssignmentsForAssigneeInTeam = async (
+  { teamId, userId },
+  { pool = getPool() } = {}
+) => {
+  const result = await pool.query(
+    `
+      select count(*) as open_assignment_count
+      from public.task_assignments ta
+      inner join public.tasks t
+        on t.id = ta.task_id
+      where ta.assignee_user_id = $1
+        and ta.is_active = true
+        and t.team_id = $2
+        and t.status not in ('completed', 'cancelled')
+    `,
+    [userId, teamId]
+  );
+
+  return Number(result.rows[0]?.open_assignment_count ?? 0);
 };
 
 export const deactivateActiveTaskAssignment = async (
@@ -442,6 +487,40 @@ export const createTaskAssignment = async (
       assignment.assigneeUserId,
       assignment.assignedByUserId,
       assignment.assignmentNote ?? null
+    ]
+  );
+
+  return result.rows[0]?.id ?? null;
+};
+
+export const createTaskUpdate = async (
+  update,
+  { pool = getPool() } = {}
+) => {
+  const result = await pool.query(
+    `
+      insert into public.task_updates (
+        task_id,
+        updated_by_user_id,
+        update_type,
+        status_after,
+        progress_percent_after,
+        note,
+        assignee_user_id,
+        created_at
+      )
+      values ($1, $2, $3, $4, $5, $6, $7, coalesce($8, timezone('utc', now())))
+      returning id
+    `,
+    [
+      update.taskId,
+      update.updatedByUserId,
+      update.updateType,
+      update.statusAfter ?? null,
+      update.progressPercentAfter ?? null,
+      update.note ?? null,
+      update.assigneeUserId ?? null,
+      update.createdAt ?? null
     ]
   );
 

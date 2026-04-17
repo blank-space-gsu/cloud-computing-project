@@ -33,6 +33,9 @@ describe("task service", () => {
       tasks: [],
       total: 0
     });
+    const ensureGenerated = vi.fn().mockResolvedValue({
+      generatedCount: 0
+    });
 
     await listTasksForUser(
       employeeUser,
@@ -41,9 +44,15 @@ describe("task service", () => {
         page: 1,
         limit: 25
       },
-      { listTasks }
+      { listTasks, ensureGenerated }
     );
 
+    expect(ensureGenerated).toHaveBeenCalledWith(
+      employeeUser,
+      expect.objectContaining({
+        assigneeUserId: employeeUser.id
+      })
+    );
     expect(listTasks).toHaveBeenCalledWith({
       actorUserId: employeeUser.id,
       actorAppRole: "employee",
@@ -59,6 +68,10 @@ describe("task service", () => {
       membershipRole: "manager"
     });
     const insertTask = vi.fn().mockResolvedValue(sampleTask.id);
+    const insertTaskUpdate = vi.fn().mockResolvedValue(
+      "aaaaaaa1-1111-4111-8111-111111111111"
+    );
+    const runTransaction = vi.fn().mockImplementation(async (work) => work({}));
     const findTask = vi.fn().mockResolvedValue(sampleTask);
 
     const result = await createTaskForUser(
@@ -71,10 +84,13 @@ describe("task service", () => {
       {
         findTeam,
         insertTask,
+        insertTaskUpdate,
+        runTransaction,
         findTask
       }
     );
 
+    expect(runTransaction).toHaveBeenCalled();
     expect(insertTask).toHaveBeenCalledWith(
       expect.objectContaining({
         teamId: sampleTask.teamId,
@@ -84,7 +100,22 @@ describe("task service", () => {
         progressPercent: 0,
         createdByUserId: managerUser.id,
         updatedByUserId: managerUser.id
-      })
+      }),
+      {
+        pool: {}
+      }
+    );
+    expect(insertTaskUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: sampleTask.id,
+        updatedByUserId: managerUser.id,
+        updateType: "created",
+        statusAfter: "todo",
+        progressPercentAfter: 0
+      }),
+      {
+        pool: {}
+      }
     );
     expect(result.id).toBe(sampleTask.id);
   });
@@ -110,6 +141,10 @@ describe("task service", () => {
       }
     });
     const updateTask = vi.fn().mockResolvedValue(sampleTask.id);
+    const insertTaskUpdate = vi.fn().mockResolvedValue(
+      "bbbbbbb2-2222-4222-8222-222222222222"
+    );
+    const runTransaction = vi.fn().mockImplementation(async (work) => work({}));
 
     await updateTaskForUser(
       employeeUser,
@@ -120,10 +155,13 @@ describe("task service", () => {
       },
       {
         findTask,
-        updateTask
+        updateTask,
+        insertTaskUpdate,
+        runTransaction
       }
     );
 
+    expect(runTransaction).toHaveBeenCalled();
     expect(updateTask).toHaveBeenCalledWith(
       sampleTask.id,
       expect.objectContaining({
@@ -133,7 +171,48 @@ describe("task service", () => {
         updatedByUserId: employeeUser.id,
         completedAt: expect.any(String)
       })
+      ,
+      {
+        pool: {}
+      }
     );
+    expect(insertTaskUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: sampleTask.id,
+        updatedByUserId: employeeUser.id,
+        updateType: "completed",
+        statusAfter: "completed",
+        progressPercentAfter: 100,
+        note: "Finished and reviewed."
+      }),
+      {
+        pool: {}
+      }
+    );
+  });
+
+  it("does not write task history for manager-only metadata edits", async () => {
+    const findTask = vi.fn().mockResolvedValue(sampleTask);
+    const updateTask = vi.fn().mockResolvedValue(sampleTask.id);
+    const insertTaskUpdate = vi.fn();
+    const runTransaction = vi.fn().mockImplementation(async (work) => work({}));
+
+    await updateTaskForUser(
+      managerUser,
+      sampleTask.id,
+      {
+        title: "Updated task title"
+      },
+      {
+        findTask,
+        updateTask,
+        insertTaskUpdate,
+        runTransaction
+      }
+    );
+
+    expect(updateTask).toHaveBeenCalled();
+    expect(insertTaskUpdate).not.toHaveBeenCalled();
   });
 
   it("rejects employee updates to protected fields", async () => {
@@ -167,6 +246,9 @@ describe("task service", () => {
     const insertTaskAssignment = vi.fn().mockResolvedValue(
       "55555555-5555-4555-8555-555555555555"
     );
+    const insertTaskUpdate = vi.fn().mockResolvedValue(
+      "ccccccc3-3333-4333-8333-333333333333"
+    );
     const updateTask = vi.fn().mockResolvedValue(sampleTask.id);
     const runTransaction = vi.fn().mockImplementation(async (work) => work({}));
 
@@ -182,6 +264,7 @@ describe("task service", () => {
         findAssignee,
         closeActiveAssignment,
         insertTaskAssignment,
+        insertTaskUpdate,
         updateTask,
         runTransaction
       }
@@ -194,6 +277,20 @@ describe("task service", () => {
         assigneeUserId: employeeUser.id,
         assignedByUserId: managerUser.id,
         assignmentNote: "Please finish before Friday."
+      }),
+      {
+        pool: {}
+      }
+    );
+    expect(insertTaskUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: sampleTask.id,
+        updatedByUserId: managerUser.id,
+        updateType: "assigned",
+        statusAfter: sampleTask.status,
+        progressPercentAfter: sampleTask.progressPercent,
+        assigneeUserId: employeeUser.id,
+        note: "Please finish before Friday."
       }),
       {
         pool: {}

@@ -8,9 +8,7 @@ import { showError, showSuccess } from '../components/toast.js';
 import { buildNotificationArchiveSection } from '../components/notifications.js';
 import {
   capitalize,
-  formatCompactNumber,
-  formatNumber,
-  formatPercent
+  formatNumber
 } from '../utils/format.js';
 import { getVisibleTeams, selectPreferredTeam, sortTeamsForDemo } from '../utils/teams.js';
 
@@ -22,7 +20,10 @@ const DEMO_MEMBER_EMAILS = {
 
 export default async function profilePage(container, params = {}) {
   const user = getUser();
-  renderHeader('Profile', isManager() ? 'Your manager identity, teams, and people context' : 'Your info, supervisors, and team context');
+  renderHeader(
+    'Profile',
+    isManager() ? 'Your account details and notification history.' : 'Your info, supervisors, and team context'
+  );
   clearElement(container);
   showLoading(container);
 
@@ -42,38 +43,11 @@ export default async function profilePage(container, params = {}) {
       })
     );
 
-    let context = {};
-
-    if (preferredTeam?.id) {
-      if (isManager()) {
-        const [dashboardRes, goalsRes] = await Promise.all([
-          api.get(`/dashboards/manager?teamId=${preferredTeam.id}`),
-          api.get(`/goals?teamId=${preferredTeam.id}&sortBy=endDate&sortOrder=asc&includeCancelled=false&limit=4`)
-        ]);
-
-        context = {
-          dashboard: dashboardRes.data,
-          goals: goalsRes.data
-        };
-      } else {
-        const [productivityRes, goalsRes] = await Promise.all([
-          api.get(`/productivity-metrics?scope=individual&teamId=${preferredTeam.id}`),
-          api.get(`/goals?teamId=${preferredTeam.id}&sortBy=endDate&sortOrder=asc&includeCancelled=false&limit=4`)
-        ]);
-
-        context = {
-          productivity: productivityRes.data,
-          goals: goalsRes.data
-        };
-      }
-    }
-
     clearElement(container);
     const profile = renderProfile({
       user,
       preferredTeam,
       teamBundles,
-      context,
       onProfileUpdated: async () => profilePage(container, params)
     });
     const notificationsArchive = await buildNotificationArchiveSection({ open: params.section === 'notifications' });
@@ -91,10 +65,11 @@ export default async function profilePage(container, params = {}) {
   }
 }
 
-function renderProfile({ user, preferredTeam, teamBundles, context, onProfileUpdated }) {
+function renderProfile({ user, preferredTeam, teamBundles, onProfileUpdated }) {
   const roster = buildRoster(teamBundles);
   const leaders = roster.filter((member) => member.membershipRole === 'manager');
   const teammates = roster.filter((member) => member.id !== user.id);
+  const visibleTeamsCount = teamBundles.length;
 
   const hero = el('section', { className: 'page-hero profile-hero' },
     el('div', { className: 'profile-hero__identity' },
@@ -109,98 +84,70 @@ function renderProfile({ user, preferredTeam, teamBundles, context, onProfileUpd
         )
       )
     ),
-    profileActionCard(user, leaders)
+    isManager()
+      ? managerAccountCard({ user, preferredTeam, visibleTeamsCount })
+      : profileActionCard(user, leaders)
   );
 
-  return el('div', { className: 'profile-shell' },
+  return el('div', { className: `profile-shell${isManager() ? ' profile-shell--manager' : ''}` },
     hero,
     isManager()
-      ? renderManagerProfile({ user, preferredTeam, leaders, roster, context, onProfileUpdated })
-      : renderEmployeeProfile({ user, preferredTeam, leaders, teammates, context, teamBundles, onProfileUpdated })
+      ? renderManagerProfile({ user, preferredTeam, visibleTeamsCount, onProfileUpdated })
+      : renderEmployeeProfile({ user, preferredTeam, leaders, teammates, teamBundles, onProfileUpdated })
   );
 }
 
-function renderManagerProfile({ user, preferredTeam, leaders, roster, context, onProfileUpdated }) {
-  const summary = context.dashboard?.summary || {};
-  const goalsSummary = context.goals?.summary || {};
-  const directReports = roster.filter((member) => member.appRole === 'employee').length;
-
-  return el('div', {},
-    el('div', { className: 'card-grid card-grid--dashboard' },
-      summaryCard('Direct reports', formatCompactNumber(directReports), 'Employees visible across the current team context.'),
-      summaryCard('Overdue tasks', formatCompactNumber(summary.overdueTaskCount || 0), 'Urgent items already past their due date.'),
-      summaryCard('Active goals', formatCompactNumber(goalsSummary.activeGoalCount || 0), 'Quota targets still in progress.'),
-      summaryCard('Completion rate', formatPercent(summary.completionRate || 0, 1), 'Task completion across the selected team.')
-    ),
-    el('div', { className: 'dashboard-layout' },
-      sectionCard(
-        'My profile details',
-        'Your account overview and backend-saved profile controls.',
-        profileDetailsPanel({
-          user,
-          preferredTeam,
-          supportLabel: 'Direct reports',
-          supportValue: formatNumber(directReports),
-          photoAccess: 'Manager-controlled (planned)',
-          directoryStatus: 'Roster visible',
-          onProfileUpdated
-        }),
-        'dashboard-section--featured profile-details-card'
-      ),
-      sectionCard(
-        'Leadership roster',
-        'Manager peers and leads visible from your current team memberships.',
-        leaders.length
-          ? el('div', { className: 'member-grid profile-member-grid' }, ...leaders.map((member) => rosterCard(member)))
-          : emptyState('No leaders found', 'No manager roster is available right now.')
-      ),
+function renderManagerProfile({ user, preferredTeam, visibleTeamsCount, onProfileUpdated }) {
+  return el('div', { className: 'profile-stack-list' },
+    sectionCard(
+      'My profile details',
+      'Update your account details and review the team context tied to your manager access.',
+      profileDetailsPanel({
+        user,
+        preferredTeam,
+        detailStats: [
+          ['Visible teams', formatNumber(visibleTeamsCount)],
+          ['Notifications', 'Past alerts below']
+        ],
+        onProfileUpdated
+      }),
+      'profile-details-card'
     )
   );
 }
 
-function renderEmployeeProfile({ user, preferredTeam, leaders, teammates, context, teamBundles, onProfileUpdated }) {
-  const monthlyRollup = context.productivity?.rollups?.monthly || {};
-  const goalsSummary = context.goals?.summary || {};
+function renderEmployeeProfile({ user, preferredTeam, leaders, teammates, teamBundles, onProfileUpdated }) {
   const primaryTeamMembers = teamBundles.find((bundle) => bundle.team.id === preferredTeam?.id)?.members || [];
   const supervisors = leaders.filter((leader) => primaryTeamMembers.some((member) => member.id === leader.id));
 
-  return el('div', {},
-    el('div', { className: 'card-grid card-grid--dashboard' },
-      summaryCard('Monthly tasks', formatCompactNumber(monthlyRollup.taskCount || 0), 'Tasks counted in the current month window.'),
-      summaryCard('Completed', formatCompactNumber(monthlyRollup.completedTaskCount || 0), 'Tasks already finished this month.'),
-      summaryCard('Completion rate', formatPercent(monthlyRollup.completionRate || 0, 1), 'Monthly task completion rate.'),
-      summaryCard('Active goals', formatCompactNumber(goalsSummary.activeGoalCount || 0), 'Current team and personal goals in your scope.'),
-      summaryCard('Supervisors', formatCompactNumber(supervisors.length), 'Managers visible on your primary team.')
+  return el('div', { className: 'dashboard-layout' },
+    sectionCard(
+      'My profile details',
+      'Your own account, role, contact details, and backend-saved profile editor.',
+      profileDetailsPanel({
+        user,
+        preferredTeam,
+        detailStats: [
+          ['Supervisors', formatNumber(supervisors.length)],
+          ['Visible teams', formatNumber(teamBundles.length)]
+        ],
+        onProfileUpdated
+      }),
+      'dashboard-section--featured profile-details-card'
     ),
-    el('div', { className: 'dashboard-layout' },
-      sectionCard(
-        'My profile details',
-        'Your own account, role, contact details, and backend-saved profile editor.',
-        profileDetailsPanel({
-          user,
-          preferredTeam,
-          supportLabel: 'Supervisors',
-          supportValue: formatNumber(supervisors.length),
-          photoAccess: 'Manager controlled',
-          directoryStatus: 'Partial support',
-          onProfileUpdated
-        }),
-        'dashboard-section--featured profile-details-card'
-      ),
-      sectionCard(
-        'Supervisor contacts',
-        'Managers on your primary team.',
-        supervisors.length
-          ? el('div', { className: 'member-grid profile-member-grid' }, ...supervisors.map((leader) => supervisorCard(leader)))
-          : emptyState('No supervisors listed', 'No manager roster was returned for your primary team.')
-      ),
-      sectionCard(
-        'My team',
-        'People visible on the same team as you.',
-        teammates.length
-          ? el('div', { className: 'member-grid profile-member-grid' }, ...teammates.map((member) => rosterCard(member)))
-          : emptyState('No teammates found', 'No other teammates were returned for your current team.')
-      )
+    sectionCard(
+      'Supervisor contacts',
+      'Managers on your primary team.',
+      supervisors.length
+        ? el('div', { className: 'member-grid profile-member-grid' }, ...supervisors.map((leader) => supervisorCard(leader)))
+        : emptyState('No supervisors listed', 'No manager roster was returned for your primary team.')
+    ),
+    sectionCard(
+      'My team',
+      'People visible on the same team as you.',
+      teammates.length
+        ? el('div', { className: 'member-grid profile-member-grid' }, ...teammates.map((member) => rosterCard(member)))
+        : emptyState('No teammates found', 'No other teammates were returned for your current team.')
     )
   );
 }
@@ -254,6 +201,18 @@ function profileActionCard(user, leaders) {
   );
 }
 
+function managerAccountCard({ user, preferredTeam, visibleTeamsCount }) {
+  return el('div', { className: 'profile-action-card profile-action-card--quiet' },
+    el('h3', {}, 'Account context'),
+    el('p', {}, 'A quiet summary of the account and team scope tied to your manager access.'),
+    el('div', { className: 'profile-action-card__grid' },
+      metricStat('Email', user.email),
+      metricStat('Primary team', preferredTeam?.name || 'No team'),
+      metricStat('Visible teams', formatNumber(visibleTeamsCount))
+    )
+  );
+}
+
 function sectionCard(title, subtitle, body, className = '') {
   return el('section', { className: `dashboard-section card${className ? ` ${className}` : ''}` },
     el('div', { className: 'section-header section-header--stacked' },
@@ -292,14 +251,14 @@ function supervisorCard(member) {
   );
 }
 
-function profileDetailsPanel({ user, preferredTeam, supportLabel, supportValue, photoAccess, directoryStatus, onProfileUpdated }) {
+function profileDetailsPanel({ user, preferredTeam, detailStats = [], onProfileUpdated }) {
   return el('div', { className: 'profile-details-panel' },
-    profileDetailsFeature({ user, preferredTeam, supportLabel, supportValue, photoAccess, directoryStatus }),
+    profileDetailsFeature({ user, preferredTeam, detailStats }),
     profileEditorCard(user, onProfileUpdated)
   );
 }
 
-function profileDetailsFeature({ user, preferredTeam, supportLabel, supportValue, photoAccess, directoryStatus }) {
+function profileDetailsFeature({ user, preferredTeam, detailStats = [] }) {
   return el('div', { className: 'profile-details-feature' },
     el('div', { className: 'profile-details-feature__header' },
       el('div', { className: 'profile-details-feature__identity' },
@@ -320,9 +279,7 @@ function profileDetailsFeature({ user, preferredTeam, supportLabel, supportValue
     ),
     el('div', { className: 'profile-details-feature__grid' },
       metricStat('Primary team', preferredTeam?.name || 'No team'),
-      metricStat(supportLabel, supportValue),
-      metricStat('Photo access', photoAccess),
-      metricStat('Directory status', directoryStatus)
+      ...detailStats.map(([label, value]) => metricStat(label, value))
     )
   );
 }

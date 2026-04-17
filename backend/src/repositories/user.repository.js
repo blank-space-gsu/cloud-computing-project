@@ -1,4 +1,5 @@
 import { getPool } from "../db/pool.js";
+import { TEAM_MEMBERSHIP_STATUSES } from "../constants/teamMemberships.js";
 
 const normalizeDate = (value) => value?.toISOString?.().slice(0, 10) ?? value ?? null;
 
@@ -51,6 +52,7 @@ export const findUserAccessProfileById = async (
       from public.users u
       left join public.team_members tm
         on tm.user_id = u.id
+        and tm.membership_status = '${TEAM_MEMBERSHIP_STATUSES.ACTIVE}'
       left join public.teams t
         on t.id = tm.team_id
       where u.id = $1
@@ -92,6 +94,7 @@ export const listUsersForDirectory = async (
         from public.team_members scoped_tm
         where scoped_tm.user_id = u.id
           and scoped_tm.team_id = $${values.length}
+          and scoped_tm.membership_status = '${TEAM_MEMBERSHIP_STATUSES.ACTIVE}'
       )
     `);
   }
@@ -121,6 +124,7 @@ export const listUsersForDirectory = async (
       from public.users u
       left join public.team_members tm
         on tm.user_id = u.id
+        and tm.membership_status = '${TEAM_MEMBERSHIP_STATUSES.ACTIVE}'
       left join public.teams t
         on t.id = tm.team_id
       ${whereSql}

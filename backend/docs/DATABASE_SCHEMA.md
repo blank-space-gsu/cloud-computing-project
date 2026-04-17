@@ -18,8 +18,12 @@ PostgreSQL enum types are used for small, stable value sets:
 
 - `app_role`
 - `team_membership_role`
+- `team_membership_status`
+- `team_membership_event_type`
+- `team_access_token_type`
 - `task_status`
 - `task_priority`
+- `task_update_type`
 
 This is simpler than separate lookup tables for a student-managed project and keeps validation close to the database.
 
@@ -49,6 +53,25 @@ This avoids conflicting stored values.
 - `member`
 - `manager`
 
+### `public.team_membership_status`
+
+- `active`
+- `left`
+- `removed`
+
+### `public.team_membership_event_type`
+
+- `added`
+- `joined`
+- `left`
+- `rejoined`
+- `removed`
+
+### `public.team_access_token_type`
+
+- `join_code`
+- `invite_link`
+
 ### `public.task_status`
 
 - `todo`
@@ -63,6 +86,13 @@ This avoids conflicting stored values.
 - `medium`
 - `high`
 - `urgent`
+
+### `public.task_update_type`
+
+- `created`
+- `assigned`
+- `updated`
+- `completed`
 
 ### `public.goal_type`
 
@@ -156,13 +186,18 @@ Stores the teams that managers and employees belong to.
 ### `public.team_members`
 
 **Purpose**
-Maps users to teams and indicates whether they are regular members or team managers for that team.
+Maps users to teams with a durable lifecycle so leave/rejoin history is preserved while active roster queries stay clean.
 
 | Column | Type | Null | Default | Notes |
 | --- | --- | --- | --- | --- |
 | `team_id` | `uuid` | No | none | Foreign key to `teams(id)` |
 | `user_id` | `uuid` | No | none | Foreign key to `users(id)` |
 | `membership_role` | `public.team_membership_role` | No | `'member'` | Team-level role |
+| `membership_status` | `public.team_membership_status` | No | `'active'` | Current lifecycle state |
+| `joined_at` | `timestamptz` | No | `timezone('utc', now())` | First join timestamp |
+| `left_at` | `timestamptz` | Yes | `null` | Set when the member leaves the team |
+| `removed_at` | `timestamptz` | Yes | `null` | Set when a manager removes the member |
+| `last_rejoined_at` | `timestamptz` | Yes | `null` | Most recent rejoin timestamp |
 | `created_at` | `timestamptz` | No | `timezone('utc', now())` | Audit timestamp |
 | `updated_at` | `timestamptz` | No | `timezone('utc', now())` | Audit timestamp |
 
@@ -177,11 +212,53 @@ Maps users to teams and indicates whether they are regular members or team manag
 - covered by the composite primary key
 
 **Check constraints**
-- none beyond enum enforcement
+- lifecycle consistency check:
+  - `active` rows must not have `left_at` or `removed_at`
+  - `left` rows must have `left_at`
+  - `removed` rows must have `removed_at`
 
 **Recommended indexes**
 - index on `user_id`
 - index on (`team_id`, `membership_role`)
+- index on (`user_id`, `membership_status`)
+- index on (`team_id`, `membership_status`, `membership_role`)
+- partial index on (`team_id`, `membership_role`) where `membership_status = 'active'`
+
+### `public.team_membership_events`
+
+**Purpose**
+Stores append-only membership lifecycle history for add/join/leave/rejoin/remove actions.
+
+| Column | Type | Null | Default | Notes |
+| --- | --- | --- | --- | --- |
+| `id` | `uuid` | No | `extensions.gen_random_uuid()` | Primary key |
+| `team_id` | `uuid` | No | none | Foreign key to `teams(id)` |
+| `user_id` | `uuid` | No | none | Foreign key to `users(id)` |
+| `event_type` | `public.team_membership_event_type` | No | none | Lifecycle event |
+| `membership_role` | `public.team_membership_role` | No | none | Role at the time of the event |
+| `acted_by_user_id` | `uuid` | Yes | `null` | User who caused the event |
+| `team_access_token_id` | `uuid` | Yes | `null` | Join access used for self-join/rejoin |
+| `metadata` | `jsonb` | No | `'{}'::jsonb` | Event metadata object |
+| `created_at` | `timestamptz` | No | `timezone('utc', now())` | Audit timestamp |
+| `updated_at` | `timestamptz` | No | `timezone('utc', now())` | Audit timestamp |
+
+### `public.team_access_tokens`
+
+**Purpose**
+Stores active join codes and invite-link tokens for self-join onboarding.
+
+| Column | Type | Null | Default | Notes |
+| --- | --- | --- | --- | --- |
+| `id` | `uuid` | No | `extensions.gen_random_uuid()` | Primary key |
+| `team_id` | `uuid` | No | none | Foreign key to `teams(id)` |
+| `token_type` | `public.team_access_token_type` | No | none | `join_code` or `invite_link` |
+| `token_value` | `text` | No | none | Actual join credential |
+| `created_by_user_id` | `uuid` | No | none | Manager or admin who generated it |
+| `expires_at` | `timestamptz` | Yes | `null` | Optional expiry |
+| `revoked_at` | `timestamptz` | Yes | `null` | Set when access is rotated or revoked |
+| `is_active` | `boolean` | No | `true` | Current usability flag |
+| `created_at` | `timestamptz` | No | `timezone('utc', now())` | Audit timestamp |
+| `updated_at` | `timestamptz` | No | `timezone('utc', now())` | Audit timestamp |
 
 ### `public.tasks`
 
@@ -199,6 +276,8 @@ Stores task definitions, scheduling information, and current progress state.
 | `priority` | `public.task_priority` | No | `'medium'` | Urgency level |
 | `due_at` | `timestamptz` | Yes | `null` | Deadline timestamp |
 | `week_start_date` | `date` | No | none | Monday of the planning week |
+| `recurring_rule_id` | `uuid` | Yes | `null` | Source recurring rule when generated from a rule |
+| `generated_for_date` | `date` | Yes | `null` | Occurrence date for generated recurring task instances |
 | `estimated_hours` | `numeric(6,2)` | Yes | `null` | Optional estimate |
 | `progress_percent` | `integer` | No | `0` | 0 to 100 progress tracker |
 | `created_by_user_id` | `uuid` | No | none | User who created the task |
@@ -212,6 +291,7 @@ Stores task definitions, scheduling information, and current progress state.
 
 **Foreign keys**
 - `team_id -> teams(id)` on delete restrict
+- `recurring_rule_id -> recurring_task_rules(id)` on delete set null
 - `created_by_user_id -> users(id)` on delete restrict
 - `updated_by_user_id -> users(id)` on delete set null
 
@@ -230,8 +310,57 @@ Stores task definitions, scheduling information, and current progress state.
 - index on `priority`
 - index on `due_at`
 - index on `week_start_date`
+- index on `recurring_rule_id`
+- index on `generated_for_date`
 - composite index on (`team_id`, `week_start_date`)
 - composite index on (`team_id`, `due_at`)
+- partial unique index on (`recurring_rule_id`, `generated_for_date`) for generated recurring instances
+
+### `public.recurring_task_rules`
+
+**Purpose**
+Stores lightweight recurring templates that generate real task instances for a team.
+
+| Column | Type | Null | Default | Notes |
+| --- | --- | --- | --- | --- |
+| `id` | `uuid` | No | `extensions.gen_random_uuid()` | Primary key |
+| `team_id` | `uuid` | No | none | Owning team |
+| `title` | `text` | No | none | Generated task title |
+| `description` | `text` | Yes | `null` | Optional generated description |
+| `priority` | `public.task_priority` | No | `'medium'` | Default task priority |
+| `default_assignee_user_id` | `uuid` | Yes | `null` | Optional default employee assignee |
+| `frequency` | `public.recurring_task_frequency` | No | none | `daily`, `weekly`, or `monthly` |
+| `weekdays` | `integer[]` | Yes | `null` | Used only for weekly rules (`0-6`) |
+| `day_of_month` | `integer` | Yes | `null` | Used only for monthly rules (`1-31`) |
+| `due_time` | `time` | No | none | Due-time template for each occurrence |
+| `starts_on` | `date` | No | none | First eligible occurrence date |
+| `ends_on` | `date` | Yes | `null` | Optional rule end date |
+| `is_active` | `boolean` | No | `true` | Enables future generation |
+| `created_by_user_id` | `uuid` | No | none | Rule creator |
+| `updated_by_user_id` | `uuid` | No | none | Last rule editor |
+| `created_at` | `timestamptz` | No | `timezone('utc', now())` | Audit timestamp |
+| `updated_at` | `timestamptz` | No | `timezone('utc', now())` | Audit timestamp |
+
+**Primary key**
+- `id`
+
+**Foreign keys**
+- `team_id -> teams(id)` on delete cascade
+- `default_assignee_user_id -> users(id)` on delete set null
+- `created_by_user_id -> users(id)` on delete restrict
+- `updated_by_user_id -> users(id)` on delete restrict
+
+**Check constraints**
+- `char_length(trim(title)) > 0`
+- `ends_on is null or ends_on >= starts_on`
+- daily rules must not carry weekly/monthly config
+- weekly rules must include one or more weekdays
+- monthly rules must include `day_of_month between 1 and 31`
+- weekday arrays can only contain `0-6`
+
+**Recommended indexes**
+- index on (`team_id`, `is_active`, `starts_on`)
+- index on `default_assignee_user_id`
 
 ### `public.task_assignments`
 
@@ -264,6 +393,38 @@ Tracks which user currently owns a task while preserving reassignment history.
 
 **Check constraints**
 - active assignments must not have `unassigned_at`
+
+### `public.task_updates`
+
+**Purpose**
+Stores append-only task activity history for creation, assignment, progress updates, and completion updates while `tasks` remains the current-state snapshot.
+
+| Column | Type | Null | Default | Notes |
+| --- | --- | --- | --- | --- |
+| `id` | `uuid` | No | `extensions.gen_random_uuid()` | Primary key |
+| `task_id` | `uuid` | No | none | Foreign key to `tasks(id)` |
+| `updated_by_user_id` | `uuid` | No | none | User who performed the update |
+| `update_type` | `public.task_update_type` | No | none | `created`, `assigned`, `updated`, or `completed` |
+| `status_after` | `public.task_status` | Yes | `null` | Task status after the update |
+| `progress_percent_after` | `integer` | Yes | `null` | Progress value after the update |
+| `note` | `text` | Yes | `null` | Notes snapshot or assignment context |
+| `assignee_user_id` | `uuid` | Yes | `null` | Set for assignment events |
+| `created_at` | `timestamptz` | No | `timezone('utc', now())` | Event timestamp |
+
+**Primary key**
+- `id`
+
+**Foreign keys**
+- `task_id -> tasks(id)` on delete cascade
+- `updated_by_user_id -> users(id)` on delete restrict
+- `assignee_user_id -> users(id)` on delete set null
+
+**Check constraints**
+- `progress_percent_after is null or progress_percent_after between 0 and 100`
+
+**Recommended indexes**
+- index on (`task_id`, `created_at desc`)
+- index on (`updated_by_user_id`, `created_at desc`)
 
 ### `public.notifications`
 
@@ -471,12 +632,13 @@ These Phase 3 read models intentionally expose only the fields needed for the MV
 
 ## Phase 4 Operational Model
 
-Phase 4 does not add new tables. It activates the existing `tasks` and `task_assignments` tables through the REST API.
+Phase 4 activates the core `tasks` and `task_assignments` tables through the REST API. Phase 12 extends the same task loop with `task_updates` so assignment and employee self-reporting history remain durable.
 
 Task CRUD behavior now relies on:
 
 - `tasks` as the source of truth for title, deadline, priority, planning week, notes, progress, and completion state
 - `task_assignments` as the source of truth for the current assignee plus reassignment history
+- `task_updates` as the append-only activity history for creation, assignment, progress changes, and completion
 - the partial unique index on active assignments to guarantee one current assignee per task in MVP scope
 
 Phase 4 API responses compute these frontend-facing values at read time instead of storing them:

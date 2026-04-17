@@ -1,9 +1,9 @@
 import { el, clearElement } from '../utils/dom.js';
-import { login } from '../auth.js';
+import { getDefaultAuthenticatedHash, login } from '../auth.js';
 import { navigate } from '../router.js';
 import { renderSidebar } from '../components/sidebar.js';
 
-export default async function loginPage(container) {
+export default async function loginPage(container, params = {}) {
   document.getElementById('sidebar').classList.add('hidden');
   document.getElementById('main-wrapper').classList.add('full-width');
   document.getElementById('header').style.display = 'none';
@@ -75,7 +75,10 @@ export default async function loginPage(container) {
       document.getElementById('main-wrapper').classList.remove('full-width');
       document.getElementById('header').style.display = '';
       renderSidebar();
-      navigate('#/dashboard');
+      const redirectTarget = params.redirect?.startsWith('#/')
+        ? params.redirect
+        : getDefaultAuthenticatedHash(user);
+      navigate(redirectTarget);
     } catch (err) {
       errorBox.textContent = err.message || 'Login failed. Please check your credentials.';
       errorBox.classList.add('show');

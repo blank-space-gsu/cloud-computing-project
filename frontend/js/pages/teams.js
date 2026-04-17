@@ -1,5 +1,5 @@
 import { el, clearElement } from '../utils/dom.js';
-import { getUser, isManager } from '../auth.js';
+import { getUser, isEmployee, isManager, refreshCurrentUser } from '../auth.js';
 import * as api from '../api.js';
 import { renderHeader } from '../components/header.js';
 import { showLoading, hideLoading } from '../components/loading.js';
@@ -9,9 +9,7 @@ import { showError, showSuccess } from '../components/toast.js';
 import {
   capitalize,
   formatDate,
-  formatDateRange,
-  formatNumber,
-  formatPercent
+  formatNumber
 } from '../utils/format.js';
 import { selectPreferredTeam } from '../utils/teams.js';
 import {
@@ -30,7 +28,10 @@ export default async function teamsPage(container, params) {
 }
 
 async function renderTeamList(container) {
-  renderHeader(isManager() ? 'Teams & People' : 'Teams', isManager() ? 'Open a team to inspect people, structure, and demo-ready details' : 'Your teams and teammates');
+  renderHeader(
+    'Teams',
+    isManager() ? 'Review rosters, leaders, and membership across your teams.' : 'Your teams and teammates'
+  );
   clearElement(container);
   showLoading(container);
 
@@ -42,7 +43,26 @@ async function renderTeamList(container) {
     const teams = getWorkspaceTeams(baseTeams, getUser());
     const preferredTeam = selectPreferredTeam(teams);
     if (!teams.length) {
-      container.appendChild(emptyState('No teams', 'You are not part of any teams yet.'));
+      const empty = emptyState(
+        'No teams yet',
+        isEmployee()
+          ? 'Use a join code or invite link to join your first team.'
+          : 'You are not part of any teams yet.'
+      );
+
+      if (isEmployee()) {
+        empty.appendChild(
+          el('div', { className: 'btn-group', style: 'margin-top:16px;justify-content:center;' },
+            el('button', {
+              className: 'btn btn-primary',
+              type: 'button',
+              onClick: () => { window.location.hash = '#/join'; }
+            }, 'Join a Team')
+          )
+        );
+      }
+
+      container.appendChild(empty);
       return;
     }
 
@@ -51,18 +71,21 @@ async function renderTeamList(container) {
       return;
     }
 
+    const totalPeople = teams.reduce((sum, team) => sum + Number(team.memberCount || 0), 0);
+
     const overview = el('section', { className: 'page-hero page-hero--compact' },
       el('div', { className: 'page-hero__content' },
-        el('p', { className: 'page-hero__eyebrow' }, isManager() ? 'People Directory' : 'Team Overview'),
-        el('h2', { className: 'page-hero__title' }, preferredTeam?.name || 'Your teams'),
+        el('p', { className: 'page-hero__eyebrow' }, isManager() ? 'Managed teams' : 'Team overview'),
+        el('h2', { className: 'page-hero__title' }, 'Your teams'),
         el('p', { className: 'page-hero__description' },
-          preferredTeam?.description || 'Open a team to inspect the roster, identify supervisors, and review the current team structure.'
+          isManager()
+            ? 'Choose a team to review the roster, identify leaders, and manage membership.'
+            : preferredTeam?.description || 'Open a team to inspect the roster and review the current team structure.'
         )
       ),
       el('div', { className: 'page-hero__meta' },
         heroPill(`Visible teams · ${formatNumber(teams.length)}`),
-        heroPill(`People directory · Ready`),
-        preferredTeam ? heroPill(`Focused team · ${preferredTeam.name}`) : null
+        heroPill(`People in view · ${formatNumber(totalPeople)}`)
       )
     );
 
@@ -99,15 +122,13 @@ async function renderTeamList(container) {
         el('div', { className: 'team-card__top' },
           el('h3', {}, team.name),
           el('div', { className: 'task-badges' },
-            preferredTeam?.id === team.id ? el('span', { className: 'badge badge-primary' }, 'Demo ready') : null,
-            team.isLocalTeam ? el('span', { className: 'badge badge-info' }, 'Local demo') : null
+            team.isLocalTeam ? el('span', { className: 'badge badge-info' }, 'Custom') : null
           )
         ),
         el('p', {}, team.description || 'No description'),
         el('div', { className: 'team-stats' },
           el('span', {}, `👥 ${team.memberCount ?? 0} members`),
-          el('span', {}, `👔 ${team.managerCount ?? 0} managers`),
-          team.canManageTeam ? el('span', { className: 'badge badge-info' }, 'Manageable') : null
+          el('span', {}, `👔 ${team.managerCount ?? 0} managers`)
         )
       ))
     );
@@ -122,7 +143,7 @@ async function renderTeamList(container) {
 }
 
 async function renderTeamDetail(container, teamId, { showBackButton = true } = {}) {
-  renderHeader('Team Directory', 'Loading roster and team details');
+  renderHeader('Team', 'Loading roster and membership');
   clearElement(container);
   showLoading(container);
 
@@ -139,6 +160,7 @@ async function renderTeamDetail(container, teamId, { showBackButton = true } = {
 
     let team = {};
     let members = [];
+    let joinAccess = null;
 
     if (isLocalTeam(teamId)) {
       const resolved = getTeamDetail(teamId, { currentUser });
@@ -153,14 +175,27 @@ async function renderTeamDetail(container, teamId, { showBackButton = true } = {
       });
       team = resolved.team;
       members = resolved.members;
+
+      if (isManager() && team.canManageTeam) {
+        try {
+          const joinAccessResponse = await api.get(`/teams/${teamId}/join-access`);
+          joinAccess = joinAccessResponse.data.joinAccess || null;
+        } catch (joinAccessError) {
+          showError(joinAccessError);
+        }
+      }
     }
 
     const leaders = members.filter((member) => member.membershipRole === 'manager');
     const employees = members.filter((member) => member.membershipRole !== 'manager');
+    const currentMember = members.find((member) => member.id === currentUser.id) || null;
     const currentMemberIds = new Set(members.map((member) => member.id));
     const assignablePeople = availablePeople.filter((person) => !currentMemberIds.has(person.id));
 
-    renderHeader(team.name || 'Team Directory', isManager() ? 'People, leadership, and demo-ready team context' : 'Your team roster');
+    renderHeader(
+      team.name || 'Team',
+      isManager() ? 'Review roster, leaders, and membership.' : 'Your team roster'
+    );
 
     const actionItems = [];
     if (showBackButton) {
@@ -168,25 +203,17 @@ async function renderTeamDetail(container, teamId, { showBackButton = true } = {
         el('button', { className: 'btn btn-outline', type: 'button', onClick: () => { window.location.hash = '#/teams'; } }, '← Back to Teams')
       );
     }
-    if (isManager() && team.canManageTeam) {
+    if (isEmployee() && !team.isLocalTeam && currentMember?.membershipRole !== 'manager') {
       actionItems.push(
         el('button', {
-          className: 'btn btn-primary',
+          className: 'btn btn-outline',
           type: 'button',
-          onClick: () => openTeamEditorModal({
-            mode: 'create',
-            availablePeople,
-            onSave: async ({ name, description, members: selectedMembers }) => {
-              const created = await createPersistedTeam({
-                name,
-                description,
-                members: selectedMembers
-              });
-              showSuccess('New team created successfully.');
-              window.location.hash = `#/teams/${created.id}`;
-            }
-          })
-        }, 'Create Team'),
+          onClick: () => leavePersistedTeam({ team, member: currentMember })
+        }, 'Leave Team')
+      );
+    }
+    if (isManager() && team.canManageTeam) {
+      actionItems.push(
         el('button', {
           className: 'btn btn-outline',
           type: 'button',
@@ -202,7 +229,7 @@ async function renderTeamDetail(container, teamId, { showBackButton = true } = {
           })
         }, 'Edit Team'),
         el('button', {
-          className: 'btn btn-outline',
+          className: 'btn btn-primary',
           type: 'button',
           onClick: () => openAssignPeopleModal({
             team,
@@ -221,22 +248,51 @@ async function renderTeamDetail(container, teamId, { showBackButton = true } = {
 
     const hero = el('section', { className: 'page-hero page-hero--compact' },
       el('div', { className: 'page-hero__content' },
-        el('p', { className: 'page-hero__eyebrow' }, team.canManageTeam ? 'Manager Team View' : 'Team View'),
+        el('p', { className: 'page-hero__eyebrow' }, team.canManageTeam ? 'Managed team' : 'Team roster'),
         el('h2', { className: 'page-hero__title' }, team.name || 'Team'),
-        el('p', { className: 'page-hero__description' }, team.description || 'Inspect your team roster, leadership structure, and profile-ready people details.')
+        el('p', { className: 'page-hero__description' },
+          team.description || (team.canManageTeam
+            ? 'Review leaders, employees, and membership for this team.'
+            : 'Review the roster and supervisors for this team.')
+        )
       ),
       el('div', { className: 'page-hero__meta' },
         heroPill(`Members · ${formatNumber(team.memberCount || members.length)}`),
         heroPill(`Managers · ${formatNumber(team.managerCount || leaders.length)}`),
-        heroPill(`Directory · ${team.canManageTeam ? 'Manager tools ready' : 'Roster view'}`),
-        team.isLocalTeam ? heroPill('Source · Local demo team') : null
+        heroPill(`Employees · ${formatNumber(employees.length)}`),
+        team.isLocalTeam ? heroPill('Custom team') : null
       )
     );
+
+    const joinAccessSection = joinAccess
+      ? sectionCard(
+          'Join access',
+          'Share a code or invite link so employees can join this team themselves.',
+          buildJoinAccessCard({
+            team,
+            joinAccess,
+            onRegenerate: async () => {
+              const confirmed = window.confirm(`Regenerate join access for ${team.name}? Existing links and codes will stop working.`);
+              if (!confirmed) {
+                return;
+              }
+
+              try {
+                await api.post(`/teams/${team.id}/join-access/regenerate`);
+                showSuccess('Join access regenerated successfully.');
+                await renderTeamDetail(container, team.id, { showBackButton });
+              } catch (error) {
+                showError(error);
+              }
+            }
+          })
+        )
+      : null;
 
     const layout = el('div', { className: 'dashboard-layout', style: 'margin-top:20px' },
         sectionCard(
           'Leadership',
-          'Managers are listed first so employees can quickly identify their supervisors.',
+          'Managers are listed first so everyone can quickly identify team leads.',
           leaders.length
             ? el('div', { className: 'member-grid profile-member-grid' },
                 ...leaders.map((member) => personCard(member, () => openMemberDetailModal({ team, member })))
@@ -246,7 +302,7 @@ async function renderTeamDetail(container, teamId, { showBackButton = true } = {
         sectionCard(
           'Employees',
           isManager()
-            ? 'Click an employee to open their task and goal snapshot.'
+            ? 'Open a person to review role, contact details, and active work.'
             : 'Your teammate roster for this team.',
           employees.length
             ? el('div', { className: 'member-grid profile-member-grid' },
@@ -275,6 +331,7 @@ async function renderTeamDetail(container, teamId, { showBackButton = true } = {
 
     container.append(hero);
     if (actions) container.append(actions);
+    if (joinAccessSection) container.append(joinAccessSection);
     container.append(layout);
   } catch (err) {
     showError(err);
@@ -336,6 +393,26 @@ async function removePersistedTeamMember({ container, team, member, showBackButt
     await renderTeamDetail(container, team.id, { showBackButton });
   } catch (err) {
     showError(err);
+  }
+}
+
+async function leavePersistedTeam({ team, member }) {
+  if (!member || member.membershipRole === 'manager') {
+    return;
+  }
+
+  const confirmed = window.confirm(`Leave ${team.name}? You can rejoin later with a valid code or invite link.`);
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    const response = await api.post(`/teams/${team.id}/members/me/leave`);
+    const updatedUser = await refreshCurrentUser();
+    showSuccess(response.message || 'Team left successfully.');
+    window.location.hash = updatedUser?.teams?.length ? '#/teams' : '#/join';
+  } catch (error) {
+    showError(error);
   }
 }
 
@@ -501,102 +578,57 @@ async function openMemberDetailModal({ team, member }) {
   try {
     const canInspectInDepth = isManager() && team.canManageTeam;
     const isSelf = member.id === getUser().id;
-    const requests = [];
+    if (canInspectInDepth) {
+      const { data } = await api.get(`/tasks?teamId=${team.id}&assigneeUserId=${member.id}&sortBy=urgency&sortOrder=asc&includeCompleted=true&page=1&limit=4`);
+      clearElement(body);
 
-    if (canInspectInDepth || isSelf) {
-      requests.push(
-        api.get(`/productivity-metrics?scope=individual&teamId=${team.id}${canInspectInDepth ? `&userId=${member.id}` : ''}`),
-        api.get(`/tasks?teamId=${team.id}${canInspectInDepth ? `&assigneeUserId=${member.id}` : ''}&sortBy=urgency&sortOrder=asc&includeCompleted=true&page=1&limit=6`),
-        api.get(`/goals?teamId=${team.id}${canInspectInDepth ? `&userId=${member.id}&scope=user` : ''}&sortBy=endDate&sortOrder=asc&includeCancelled=false&limit=6`)
-      );
-    }
-
-    const [productivityRes, tasksRes, goalsRes] = requests.length ? await Promise.all(requests) : [];
-    clearElement(body);
-
-    const productivity = productivityRes?.data || {};
-    const tasks = tasksRes?.data?.tasks || [];
-    const goals = goalsRes?.data?.goals || [];
-    const email = isSelf
-      ? getUser().email
-      : member.email ||
+      const tasks = data?.tasks || [];
+      const email =
+        member.email ||
         tasks.find((task) => task.assignment?.assigneeUserId === member.id)?.assignment?.assigneeEmail ||
-        goals.find((goal) => goal.targetUser?.id === member.id)?.targetUser?.email ||
         null;
 
-    body.appendChild(el('div', { className: 'profile-modal-header' },
-      avatarBadge(member.fullName),
-      el('div', { className: 'profile-modal-header__copy' },
-        el('h3', {}, member.fullName),
-        el('p', {}, member.jobTitle || capitalize(member.appRole)),
-        el('div', { className: 'page-hero__meta', style: 'margin-top:10px' },
-          heroPill(`Team · ${team.name}`),
-          heroPill(`Role · ${capitalize(member.membershipRole || member.appRole)}`),
-          email ? heroPill(`Email · ${email}`) : heroPill('Email · Backend needed')
+      body.appendChild(memberModalHeader({ team, member, email }));
+      body.appendChild(el('div', { className: 'profile-modal-grid profile-modal-grid--compact' },
+        detailCard(
+          'Task snapshot',
+          tasks.length
+            ? el('div', { className: 'breakdown-list' },
+                ...tasks.map((task) => el('div', { className: 'breakdown-item' },
+                  el('div', { className: 'breakdown-item__copy' },
+                    el('strong', {}, task.title),
+                    el('span', {}, `${capitalize(task.status)} · ${task.dueAt ? formatDate(task.dueAt) : 'No due date'}`)
+                  )
+                ))
+              )
+            : emptyState('No assigned tasks', 'No current tasks were returned for this person.')
         )
-      )
-    ));
-
-    if (!canInspectInDepth && !isSelf) {
-      body.appendChild(el('div', { className: 'support-card', style: 'margin-top:18px' },
-        el('p', {}, 'Employees can see who is on the team, but detailed teammate metrics and full contact information are reserved for manager views with backend support.')
       ));
       return;
     }
 
-    if (productivity.rollups?.monthly || goals.length || tasks.length) {
-      const monthly = productivity.rollups?.monthly || {};
-      body.appendChild(el('div', { className: 'card-grid card-grid--dashboard', style: 'margin:18px 0' },
-        summaryCard('Monthly tasks', formatNumber(monthly.taskCount || 0), 'Tasks in the current month window.'),
-        summaryCard('Completed', formatNumber(monthly.completedTaskCount || 0), 'Completed tasks in the current month.'),
-        summaryCard('Open', formatNumber(monthly.openTaskCount || 0), 'Open tasks still in progress.'),
-        summaryCard('Completion rate', formatPercent(monthly.completionRate || 0, 1), 'Task completion rate in the current month.')
+    clearElement(body);
+    const email = isSelf ? getUser().email : member.email || null;
+
+    body.appendChild(memberModalHeader({ team, member, email }));
+
+    if (!canInspectInDepth && !isSelf) {
+      body.appendChild(el('div', { className: 'support-card', style: 'margin-top:18px' },
+        el('p', {}, 'You can see who is on the team here. Managers can handle assignment and roster decisions from Worker Tracker and Teams.')
       ));
+      return;
     }
 
-    body.appendChild(el('div', { className: 'profile-modal-grid' },
+    body.appendChild(el('div', { className: 'profile-modal-grid profile-modal-grid--compact' },
       detailCard(
-        'Assigned tasks',
-        tasks.length
-          ? el('div', { className: 'breakdown-list' },
-              ...tasks.slice(0, 4).map((task) => el('div', { className: 'breakdown-item' },
-                el('div', { className: 'breakdown-item__copy' },
-                  el('strong', {}, task.title),
-                  el('span', {}, `${capitalize(task.status)} · ${task.dueAt ? formatDate(task.dueAt) : 'No due date'}`)
-                )
-              ))
-            )
-          : emptyState('No task details', 'No assigned tasks were returned for this person.')
-      ),
-      detailCard(
-        'Goals',
-        goals.length
-          ? el('div', { className: 'breakdown-list' },
-              ...goals.slice(0, 4).map((goal) => el('div', { className: 'breakdown-item' },
-                el('div', { className: 'breakdown-item__copy' },
-                  el('strong', {}, goal.title),
-                  el('span', {}, `${formatPercent(goal.progressPercent || 0, 1)} · ${formatDateRange(goal.startDate, goal.endDate)}`)
-                )
-              ))
-            )
-          : emptyState('No user goals', 'No user-scoped goals were returned for this person.')
-      ),
-      detailCard(
-        'Profile overview',
+        'Team context',
         metricsPanel([
           ['Team', team.name],
           ['Role', capitalize(member.membershipRole || member.appRole)],
-          ['Completion rate', formatPercent(productivity.rollups?.monthly?.completionRate || 0, 1)],
-          ['Average progress', formatPercent(productivity.rollups?.monthly?.averageProgressPercent || 0, 1)]
+          ['Visible roster', `${formatNumber(team.memberCount || 0)} members`]
         ])
       )
     ));
-
-    if (!email) {
-      body.appendChild(el('div', { className: 'support-card', style: 'margin-top:18px' },
-        el('p', {}, 'This person’s email is not reliably available in the current backend team-member response. A dedicated contact endpoint would make the directory complete.')
-      ));
-    }
   } catch (err) {
     clearElement(body);
     body.appendChild(emptyState('Unable to load profile', err.message || 'This person could not be loaded right now.'));
@@ -607,6 +639,82 @@ function detailCard(title, body) {
   return el('section', { className: 'profile-inline-card' },
     el('strong', {}, title),
     el('div', { style: 'margin-top:12px' }, body)
+  );
+}
+
+function buildJoinAccessCard({ team, joinAccess, onRegenerate }) {
+  return el('div', { className: 'join-access-card' },
+    joinAccessRow(
+      'Join code',
+      joinAccess.joinCode || 'Unavailable',
+      'Share this code with employees who should join this team.',
+      joinAccess.joinCode
+        ? el('button', {
+            className: 'btn btn-outline btn-sm',
+            type: 'button',
+            onClick: () => copyToClipboard(joinAccess.joinCode, `Copied ${team.name} join code.`)
+          }, 'Copy code')
+        : null
+    ),
+    joinAccessRow(
+      'Invite link',
+      joinAccess.inviteUrl || 'Unavailable',
+      'Employees can open this link while signed in to join directly.',
+      el('div', { className: 'btn-group' },
+        joinAccess.inviteUrl
+          ? el('button', {
+              className: 'btn btn-outline btn-sm',
+              type: 'button',
+              onClick: () => copyToClipboard(joinAccess.inviteUrl, 'Copied invite link.')
+            }, 'Copy link')
+          : null,
+        el('button', {
+          className: 'btn btn-outline btn-sm',
+          type: 'button',
+          onClick: onRegenerate
+        }, joinAccess.inviteUrl ? 'Regenerate' : 'Generate access')
+      )
+    )
+  );
+}
+
+function joinAccessRow(label, value, note, action) {
+  return el('div', { className: 'join-access-row' },
+    el('div', { className: 'join-access-row__copy' },
+      el('span', { className: 'join-access-row__label' }, label),
+      el('strong', { className: 'join-access-row__value', title: value }, value),
+      el('span', { className: 'join-access-row__note' }, note)
+    ),
+    action ? el('div', { className: 'join-access-row__action' }, action) : null
+  );
+}
+
+async function copyToClipboard(value, successMessage) {
+  try {
+    await navigator.clipboard.writeText(value);
+    showSuccess(successMessage);
+  } catch {
+    window.prompt('Copy this value:', value);
+  }
+}
+
+function memberModalHeader({ team, member, email = null }) {
+  const pills = [
+    heroPill(`Team · ${team.name}`),
+    heroPill(`Role · ${capitalize(member.membershipRole || member.appRole)}`)
+  ];
+
+  if (email) {
+    pills.push(heroPill(`Email · ${email}`));
+  }
+
+  return el('div', { className: 'profile-modal-header' },
+    avatarBadge(member.fullName),
+    el('div', { className: 'profile-modal-header__copy' },
+      el('h3', {}, member.fullName),
+      el('p', {}, member.jobTitle || capitalize(member.appRole)),
+      el('div', { className: 'page-hero__meta', style: 'margin-top:10px' }, ...pills)
+    )
   );
 }
 

@@ -55,10 +55,22 @@ export const listTasksQuerySchema = z.object({
   status: z.enum(TASK_STATUS_VALUES).optional(),
   priority: z.enum(TASK_PRIORITY_VALUES).optional(),
   weekStartDate: mondayDateSchema.optional(),
+  dateFrom: isoDateSchema.optional(),
+  dateTo: isoDateSchema.optional(),
   includeCompleted: booleanLikeSchema.default(true),
   sortBy: z.enum(TASK_SORT_FIELD_VALUES).default("urgency"),
   sortOrder: z.enum(["asc", "desc"]).default("asc")
-});
+}).refine(
+  (value) =>
+    !value.dateFrom ||
+    !value.dateTo ||
+    Date.parse(`${value.dateFrom}T00:00:00.000Z`) <=
+      Date.parse(`${value.dateTo}T00:00:00.000Z`),
+  {
+    message: "dateFrom must be before or equal to dateTo.",
+    path: ["dateFrom"]
+  }
+);
 
 export const createTaskAssignmentBodySchema = z.object({
   taskId: uuidSchema,
