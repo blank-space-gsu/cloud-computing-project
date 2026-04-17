@@ -1,9 +1,11 @@
-import { getDefaultAuthenticatedHash, isLoggedIn } from './auth.js';
+import { getDefaultAuthenticatedHash, isEmployee, isLoggedIn, isManager } from './auth.js';
 
 let routes = {};
 let currentCleanup = null;
 const publicRoutes = new Set(['/', '/login']);
 const retiredRoutes = new Set(['/hours', '/productivity', '/goals']);
+const managerOnlyRoutes = new Set(['/dashboard', '/worker-tracker']);
+const employeeOnlyRoutes = new Set(['/calendar']);
 
 function buildLoginRedirectHash(hash) {
   const redirect = hash && hash !== '#/' ? hash : '#/dashboard';
@@ -48,6 +50,17 @@ export async function resolve() {
   if (publicRoutes.has(path) && isLoggedIn()) {
     window.location.hash = getDefaultAuthenticatedHash();
     return;
+  }
+
+  if (isLoggedIn()) {
+    if (managerOnlyRoutes.has(path) && isEmployee()) {
+      window.location.hash = getDefaultAuthenticatedHash();
+      return;
+    }
+    if (employeeOnlyRoutes.has(path) && isManager()) {
+      window.location.hash = getDefaultAuthenticatedHash();
+      return;
+    }
   }
 
   let handler = routes[path];

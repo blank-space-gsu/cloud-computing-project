@@ -5,6 +5,7 @@
 Stable today:
 
 - backend health check
+- signup with global app-role selection (`manager` or `employee`)
 - login form
 - authenticated current-user loading
 - role-aware UI branching for employee vs manager
@@ -43,6 +44,7 @@ Still in progress:
 | Method | Path | Use now? | Notes |
 | --- | --- | --- | --- |
 | `GET` | `/api/v1/health` | Yes | Useful for startup or API availability checks |
+| `POST` | `/api/v1/auth/signup` | Yes | Self-service account creation with global `appRole` selection |
 | `POST` | `/api/v1/auth/login` | Yes | Main login form submission endpoint |
 | `GET` | `/api/v1/auth/me` | Yes | Load the logged-in user after storing tokens |
 | `GET` | `/api/v1/auth/manager-access` | Optional | Manager-role verification endpoint for protected manager UI checks |
@@ -58,9 +60,9 @@ Still in progress:
 | `GET` | `/api/v1/teams/:teamId/members` | Yes | Load the basic roster for a visible team |
 | `POST` | `/api/v1/teams/:teamId/members` | Yes | Manager/admin team membership add endpoint |
 | `DELETE` | `/api/v1/teams/:teamId/members/:userId` | Yes | Manager/admin team membership remove endpoint |
-| `GET` | `/api/v1/teams/:teamId/join-access` | Yes | Load current join code and invite link for a manageable team |
-| `POST` | `/api/v1/teams/:teamId/join-access/regenerate` | Yes | Rotate team join access for a manageable team |
-| `POST` | `/api/v1/team-join` | Yes | Employee self-join using a join code or invite token |
+| `GET` | `/api/v1/teams/:teamId/join-access` | Yes | Load current employee and manager join access for a manageable team |
+| `POST` | `/api/v1/teams/:teamId/join-access/regenerate` | Yes | Rotate either employee or manager join access for a manageable team |
+| `POST` | `/api/v1/team-join` | Yes | Join via code or invite token; backend enforces whether the token grants member or manager access |
 | `POST` | `/api/v1/teams/:teamId/members/me/leave` | Yes | Employee self-leave with lifecycle-safe membership handling |
 | `GET` | `/api/v1/tasks` | Yes | Load scoped task lists with filters and pagination metadata |
 | `POST` | `/api/v1/tasks` | Yes | Manager/admin task creation endpoint |
@@ -84,15 +86,55 @@ Still in progress:
 
 ## New Integration Notes
 
+- `POST /api/v1/auth/signup` accepts `email`, `password`, `firstName`, `lastName`, optional `jobTitle`, and required `appRole`.
+- Signup now returns a pending-verification payload:
+  - `data.email`
+  - `data.appRole`
+  - `data.verificationRequired`
+  - `data.verificationEmailSent`
+  - `data.emailRedirectTo`
+- Signup does **not** return an authenticated session.
+- The frontend should show a clear "check your inbox" state after signup and should not try to store access or refresh tokens from the signup response.
+- `POST /api/v1/auth/login` returns `403 EMAIL_NOT_VERIFIED` when the account exists but the email has not been confirmed yet.
+- `auth/me` and login now self-heal missing or stale app-profile rows from Supabase-auth metadata when possible, then return the canonical app profile.
 - `auth/me` and `users/me` now include `dateOfBirth`, `address`, and `avatarUrl` when available.
 - `teams/:teamId/members` now includes `email`, `avatarUrl`, and `isActive` for roster/detail modals.
 - Avatar support is URL-based in this phase. The backend stores `avatarUrl`; it does not accept multipart file uploads.
 - `POST /api/v1/users` always creates `appRole: "employee"` from the backend side. The frontend should not send or expect arbitrary role creation.
 - Manager membership promotion/demotion is intentionally stricter than normal membership edits. Non-admin managers can add and remove regular members, but manager memberships remain admin-controlled.
+- `GET /api/v1/teams/:teamId/join-access` now returns:
+  - `data.joinAccess` as the compatibility alias for employee/member access
+  - `data.employeeJoinAccess`
+  - `data.managerJoinAccess`
+- Each join-access object includes `membershipRole`, `joinCode`, `inviteToken`, and `inviteUrl`.
+- `POST /api/v1/teams/:teamId/join-access/regenerate` accepts an optional body:
+
+```json
+{
+  "membershipRole": "manager"
+}
+```
+
+- Omit `membershipRole` to rotate employee/member access.
+- `POST /api/v1/team-join` still accepts exactly one of `joinCode` or `inviteToken`.
+- The backend decides whether the join creates a `member` or `manager` membership from the stored token grant, not from the request body or URL query parameters.
+- Employee join access only works for globally `employee` users.
+- Manager join access only works for globally `manager` or `admin` users.
 - `GET /api/v1/notifications` returns `data.notifications` and `data.unreadCount`.
 - Due-soon notifications are generated lazily when the notifications list is loaded, then persisted with deduping. Team-added notifications are created immediately when a membership is added.
 
-## Login Flow
+## Signup and Login Flow
+
+### Signup
+
+1. submit the signup form to `POST /api/v1/auth/signup`
+2. include exactly one global `appRole`: `manager` or `employee`
+3. if successful, do **not** store tokens
+4. show a "check your inbox to verify your email" state
+5. after the user verifies their email, route them to the normal login flow
+6. if login returns `EMAIL_NOT_VERIFIED`, keep them in the verification-needed state instead of treating it like a bad password
+
+### Login
 
 1. submit the login form to `POST /api/v1/auth/login`
 2. if successful, store `data.session.accessToken`
@@ -129,6 +171,31 @@ const result = await response.json();
 if (result.success) {
   localStorage.setItem("accessToken", result.data.session.accessToken);
   localStorage.setItem("refreshToken", result.data.session.refreshToken);
+}
+```
+
+### Signup
+
+```js
+const response = await fetch("http://localhost:4000/api/v1/auth/signup", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({
+    email: "employee.new@tasktrail.local",
+    password: "example-password",
+    firstName: "Ethan",
+    lastName: "Employee",
+    appRole: "employee"
+  })
+});
+
+const result = await response.json();
+
+if (result.success) {
+  console.log(result.data.verificationRequired); // true
+  console.log(result.data.emailRedirectTo); // frontend redirect target after verification
 }
 ```
 

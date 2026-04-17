@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The Cloud-Based Workforce Task Management System is a web application for organizing employee work in one place. It replaces fragmented tracking across spreadsheets, email threads, chat messages, and ad hoc manual processes.
+TaskTrail is a web application for organizing employee work in one place. It replaces fragmented tracking across spreadsheets, email threads, chat messages, and ad hoc manual processes.
 
 ## Problem Statement
 
@@ -47,9 +47,9 @@ The planned roadmap is now complete. If the team wants to extend the project aft
 
 As of April 17, 2026, the backend supports the focused product spine:
 
-- backend-managed auth and RBAC
+- backend-managed Supabase auth signup/login and RBAC
 - durable team memberships with leave/rejoin history
-- join codes and invite links through team join access
+- employee and manager join access through role-aware team access tokens
 - employee self-join and self-leave flows
 - scoped team list, team detail, and active roster endpoints
 - task CRUD, assignment, and reassignment

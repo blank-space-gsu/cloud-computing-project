@@ -20,6 +20,7 @@ This project keeps runtime configuration in environment variables so secrets do 
 | `APP_NAME` | Yes | `workforce-task-management-backend` | Display name for health and logging output |
 | `API_PREFIX` | Yes | `/api/v1` | Base prefix for all REST endpoints |
 | `FRONTEND_APP_ORIGIN` | Yes | `http://localhost:5500` | Allowed frontend origin for CORS. Multiple values can be comma-separated. |
+| `SUPABASE_AUTH_EMAIL_REDIRECT_TO` | Recommended | `http://localhost:5500` | Redirect target used in Supabase verification emails. Defaults to the first frontend origin when omitted. |
 | `SUPABASE_PROJECT_REF` | Recommended | `dfllpxijgfcoazwstegl` | Helps document which hosted Supabase project this backend targets |
 | `SUPABASE_URL` | Recommended in Phase 1, required in Phase 2 | `https://dfllpxijgfcoazwstegl.supabase.co` | Base URL for Supabase Auth and future backend integrations |
 | `SUPABASE_ANON_KEY` | Not used in Phase 1, required in Phase 2 | `...` | Used for auth flows such as password sign-in via backend-managed endpoints |
@@ -38,6 +39,7 @@ This project keeps runtime configuration in environment variables so secrets do 
 - The backend can boot without `DATABASE_URL`, but health output will report `data.database.status = "not_configured"`.
 - Database-backed features should not be built until `DATABASE_URL` is set.
 - Phase 2 will rely on the Supabase auth variables listed above.
+- Hosted Supabase projects should also have email confirmations enabled in Auth settings when self-service signup is active.
 - For the Supabase pooler setup used in this project, `sslmode=no-verify` is the practical local-development setting.
 - Phase 9 adds optional smoke-test variables for deployment verification; they are not required for the API to boot.
 

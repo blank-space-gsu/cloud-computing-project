@@ -14,6 +14,7 @@ import {
 import {
   addTeamMemberBodySchema,
   createTeamBodySchema,
+  regenerateTeamJoinAccessBodySchema,
   teamIdParamsSchema,
   teamMemberParamsSchema,
   updateTeamBodySchema
@@ -118,7 +119,12 @@ export const getTeamJoinAccessHandler = async (request, response) => {
 
 export const regenerateTeamJoinAccessHandler = async (request, response) => {
   const { teamId } = teamIdParamsSchema.parse(request.params);
-  const result = await regenerateTeamJoinAccessForUser(request.auth.user, teamId);
+  const payload = regenerateTeamJoinAccessBodySchema.parse(request.body ?? {});
+  const result = await regenerateTeamJoinAccessForUser(
+    request.auth.user,
+    teamId,
+    payload
+  );
 
   return sendSuccess(response, {
     message: "Team join access regenerated successfully.",

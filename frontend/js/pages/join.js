@@ -8,44 +8,28 @@ import { navigate } from '../router.js';
 
 export default async function joinPage(container, params = {}) {
   const currentUser = getUser();
-  const onboardingMode = !hasActiveTeams(currentUser);
+  const employeeMode = isEmployee();
+  const onboardingMode = employeeMode && !hasActiveTeams(currentUser);
   const inviteToken = params.inviteToken?.trim() || '';
   let pending = false;
   let cancelled = false;
 
   renderHeader(
     'Join Team',
-    onboardingMode ? 'Join your first team' : 'Add another team'
+    onboardingMode
+      ? 'Join your first team'
+      : employeeMode
+        ? 'Add another team'
+        : 'Join a team as manager'
   );
 
   clearElement(container);
 
-  // ---- Non-employee view (managers land here, e.g. via invite URL) --------
-  if (!isEmployee()) {
-    const notice = el('section', { className: 'ejoin' },
-      el('div', { className: 'ejoin-card' },
-        el('div', { className: 'ejoin-card__head' },
-          el('span', { className: 'ejoin-eyebrow' }, 'Manager account'),
-          el('h2', { className: 'ejoin-card__title' }, 'Join codes are for employees'),
-          el('p', { className: 'ejoin-card__desc' },
-            'Managers create and share team access from the Teams page.'
-          )
-        ),
-        el('div', { className: 'ejoin-actions' },
-          el('button', {
-            className: 'ejoin-btn ejoin-btn--primary',
-            type: 'button',
-            onClick: () => navigate('#/teams')
-          }, 'Open Teams')
-        )
-      )
-    );
-    container.appendChild(notice);
-    return;
-  }
-
   // ---- Employee view ------------------------------------------------------
   const statusBox = el('div', { className: 'ejoin-status', hidden: true });
+  const inviteMode = Boolean(inviteToken);
+  const codeLabel = employeeMode ? 'Join code' : 'Access code';
+  const submitLabel = inviteMode ? 'Join team' : employeeMode ? 'Use join code' : 'Use access code';
 
   const codeInput = el('input', {
     className: 'ejoin-input',
@@ -59,40 +43,61 @@ export default async function joinPage(container, params = {}) {
   const submitButton = el(
     'button',
     { className: 'ejoin-btn ejoin-btn--primary', type: 'submit' },
-    inviteToken ? 'Join team' : 'Use join code'
+    submitLabel
   );
 
   const form = el('form', { className: 'ejoin-form' },
-    el('label', { className: 'ejoin-label', htmlFor: 'join-code' }, 'Join code'),
+    el('label', { className: 'ejoin-label', htmlFor: 'join-code' }, codeLabel),
     codeInput,
     el('div', { className: 'ejoin-form__actions' }, submitButton)
   );
 
-  const helperItems = [
-    onboardingMode
-      ? 'Enter the code your manager shared, or open the invite link while signed in.'
-      : 'Joining another team will add it alongside your current memberships.',
-    'You can leave a team later, but open assignments must be cleared first.'
-  ];
+  const helperItems = employeeMode
+    ? [
+        onboardingMode
+          ? 'Enter the code your manager shared, or open the invite link while signed in.'
+          : 'Joining another team will add it alongside your current memberships.',
+        'You can leave a team later, but open assignments must be cleared first.'
+      ]
+    : [
+        inviteMode
+          ? 'We detected a manager invite in this URL. Confirm to join this team as a co-manager.'
+          : 'Use the manager code or invite link shared by the team owner to join as a manager.',
+        'Employee-only access is blocked for manager accounts.'
+      ];
 
   const shell = el('section', { className: 'ejoin' });
 
   const card = el('div', { className: 'ejoin-card' },
     el('div', { className: 'ejoin-card__head' },
-      el('span', { className: 'ejoin-eyebrow' }, onboardingMode ? 'Onboarding' : 'Team access'),
+      el('span', { className: 'ejoin-eyebrow' },
+        onboardingMode
+          ? 'Onboarding'
+          : employeeMode
+            ? 'Team access'
+            : 'Manager access'
+      ),
       el('h2', { className: 'ejoin-card__title' },
-        onboardingMode ? 'Join your first team' : 'Join another team'
+        onboardingMode
+          ? 'Join your first team'
+          : employeeMode
+            ? 'Join another team'
+            : 'Join a team you manage'
       ),
       el('p', { className: 'ejoin-card__desc' },
-        inviteToken
-          ? 'Invite link detected. Confirm to finish joining this team.'
-          : 'Use a team join code to become an active member.'
+        inviteMode
+          ? employeeMode
+            ? 'Invite link detected. Confirm to finish joining this team.'
+            : 'Manager invite detected. Confirm to join this team as a manager.'
+          : employeeMode
+            ? 'Use a team join code to become an active member.'
+            : 'Use a manager access code to join a team as a co-manager.'
       )
     ),
-    inviteToken
+    inviteMode
       ? el('div', { className: 'ejoin-invite' },
-          el('strong', {}, 'Invite link ready'),
-          el('span', {}, 'We detected a team invite in this URL.')
+          el('strong', {}, employeeMode ? 'Invite link ready' : 'Manager invite ready'),
+          el('span', {}, employeeMode ? 'We detected a team invite in this URL.' : 'We detected a manager invite in this URL.')
         )
       : null,
     statusBox,
@@ -142,7 +147,14 @@ export default async function joinPage(container, params = {}) {
     if (pending || cancelled) return;
 
     setPending(true, pendingLabel);
-    setStatus('info', inviteToken ? 'Connecting you to the team…' : 'Checking your join access…');
+    setStatus(
+      'info',
+      inviteMode
+        ? 'Connecting you to the team…'
+        : employeeMode
+          ? 'Checking your join access…'
+          : 'Checking your manager access…'
+    );
 
     try {
       const { data, message } = await api.post('/team-join', payload);
@@ -155,11 +167,11 @@ export default async function joinPage(container, params = {}) {
       const message = error?.message || 'We could not join that team right now.';
       setStatus('error', message);
       showError(error);
-      setPending(false, 'Use join code');
+      setPending(false, submitLabel);
       return;
     }
 
-    setPending(false, 'Use join code');
+    setPending(false, submitLabel);
   };
 
   form.addEventListener('submit', async (event) => {
@@ -174,7 +186,7 @@ export default async function joinPage(container, params = {}) {
     await completeJoin({ joinCode }, 'Joining…');
   });
 
-  if (inviteToken) {
+  if (inviteMode) {
     setTimeout(() => {
       if (!cancelled) {
         completeJoin({ inviteToken }, 'Joining…');

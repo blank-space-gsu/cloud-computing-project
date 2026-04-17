@@ -1,13 +1,15 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { loginUser, resolveAuthenticatedUser } = vi.hoisted(() => ({
+const { loginUser, signupUser, resolveAuthenticatedUser } = vi.hoisted(() => ({
   loginUser: vi.fn(),
+  signupUser: vi.fn(),
   resolveAuthenticatedUser: vi.fn()
 }));
 
 vi.mock("../../src/services/auth.service.js", () => ({
   loginUser,
+  signupUser,
   resolveAuthenticatedUser
 }));
 
@@ -47,10 +49,48 @@ describe("auth routes", () => {
     expect(response.body.data.user.appRole).toBe("manager");
   });
 
+  it("signs a user up successfully and returns the pending verification envelope", async () => {
+    signupUser.mockResolvedValue({
+      email: "manager.new@tasktrail.local",
+      appRole: "manager",
+      verificationRequired: true,
+      verificationEmailSent: true,
+      emailRedirectTo: "http://localhost:5500"
+    });
+
+    const response = await request(app).post("/api/v1/auth/signup").send({
+      email: "manager.new@tasktrail.local",
+      password: "example-password",
+      firstName: "Maya",
+      lastName: "Manager",
+      appRole: "manager"
+    });
+
+    expect(response.status).toBe(201);
+    expect(response.body.success).toBe(true);
+    expect(response.body.message).toBe("Signup successful. Check your inbox to verify your email.");
+    expect(response.body.data.appRole).toBe("manager");
+    expect(response.body.data.verificationRequired).toBe(true);
+  });
+
   it("rejects invalid login payloads", async () => {
     const response = await request(app).post("/api/v1/auth/login").send({
       email: "not-an-email",
       password: "123"
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body.success).toBe(false);
+    expect(response.body.error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("rejects invalid signup payloads", async () => {
+    const response = await request(app).post("/api/v1/auth/signup").send({
+      email: "not-an-email",
+      password: "123",
+      firstName: "",
+      lastName: "User",
+      appRole: "admin"
     });
 
     expect(response.status).toBe(400);

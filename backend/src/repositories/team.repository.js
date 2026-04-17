@@ -79,6 +79,7 @@ const mapTeamAccessToken = (row) => ({
   id: row.id,
   teamId: row.team_id,
   tokenType: row.token_type,
+  grantedMembershipRole: row.granted_membership_role,
   tokenValue: row.token_value,
   createdByUserId: row.created_by_user_id,
   expiresAt: normalizeTimestamp(row.expires_at),
@@ -574,15 +575,24 @@ export const insertTeamMembershipEvent = async (
 };
 
 export const listActiveTeamAccessTokens = async (
-  { teamId },
+  { teamId, grantedMembershipRole },
   { pool = getPool() } = {}
 ) => {
+  const values = [teamId];
+  let grantedMembershipRoleClause = "";
+
+  if (grantedMembershipRole) {
+    values.push(grantedMembershipRole);
+    grantedMembershipRoleClause = `and granted_membership_role = $2`;
+  }
+
   const result = await pool.query(
     `
       select
         id,
         team_id,
         token_type,
+        granted_membership_role,
         token_value,
         created_by_user_id,
         expires_at,
@@ -592,17 +602,22 @@ export const listActiveTeamAccessTokens = async (
         updated_at
       from public.team_access_tokens
       where team_id = $1
+        ${grantedMembershipRoleClause}
         and is_active = true
         and revoked_at is null
         and (expires_at is null or expires_at > timezone('utc', now()))
       order by
+        case
+          when granted_membership_role = 'member' then 0
+          else 1
+        end,
         case
           when token_type = '${TEAM_ACCESS_TOKEN_TYPES.JOIN_CODE}' then 0
           else 1
         end,
         created_at desc
     `,
-    [teamId]
+    values
   );
 
   return result.rows.map(mapTeamAccessToken);
@@ -617,15 +632,17 @@ export const createTeamAccessToken = async (
       insert into public.team_access_tokens (
         team_id,
         token_type,
+        granted_membership_role,
         token_value,
         created_by_user_id,
         expires_at
       )
-      values ($1, $2, $3, $4, $5)
+      values ($1, $2, $3, $4, $5, $6)
       returning
         id,
         team_id,
         token_type,
+        granted_membership_role,
         token_value,
         created_by_user_id,
         expires_at,
@@ -637,6 +654,7 @@ export const createTeamAccessToken = async (
     [
       accessToken.teamId,
       accessToken.tokenType,
+      accessToken.grantedMembershipRole,
       accessToken.tokenValue,
       accessToken.createdByUserId,
       accessToken.expiresAt ?? null
@@ -647,9 +665,17 @@ export const createTeamAccessToken = async (
 };
 
 export const revokeActiveTeamAccessTokens = async (
-  { teamId },
+  { teamId, grantedMembershipRole },
   { pool = getPool() } = {}
 ) => {
+  const values = [teamId];
+  let grantedMembershipRoleClause = "";
+
+  if (grantedMembershipRole) {
+    values.push(grantedMembershipRole);
+    grantedMembershipRoleClause = `and granted_membership_role = $2`;
+  }
+
   const result = await pool.query(
     `
       update public.team_access_tokens
@@ -658,10 +684,11 @@ export const revokeActiveTeamAccessTokens = async (
         revoked_at = timezone('utc', now()),
         updated_at = timezone('utc', now())
       where team_id = $1
+        ${grantedMembershipRoleClause}
         and is_active = true
       returning id
     `,
-    [teamId]
+    values
   );
 
   return result.rowCount;
@@ -677,6 +704,7 @@ export const findTeamAccessTokenByValue = async (
         id,
         team_id,
         token_type,
+        granted_membership_role,
         token_value,
         created_by_user_id,
         expires_at,

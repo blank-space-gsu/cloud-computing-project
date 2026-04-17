@@ -313,16 +313,32 @@ describe("team service", () => {
 
   it("loads current team join access for managers", async () => {
     const findTeam = vi.fn().mockResolvedValue(sampleTeam);
-    const listTokens = vi.fn().mockResolvedValue([
-      {
-        tokenType: "join_code",
-        tokenValue: "OPS12345"
-      },
-      {
-        tokenType: "invite_link",
-        tokenValue: "invite-token"
-      }
-    ]);
+    const listTokens = vi
+      .fn()
+      .mockResolvedValueOnce([
+        {
+          tokenType: "join_code",
+          grantedMembershipRole: "member",
+          tokenValue: "OPS12345"
+        },
+        {
+          tokenType: "invite_link",
+          grantedMembershipRole: "member",
+          tokenValue: "invite-token"
+        }
+      ])
+      .mockResolvedValueOnce([
+        {
+          tokenType: "join_code",
+          grantedMembershipRole: "manager",
+          tokenValue: "MGR12345"
+        },
+        {
+          tokenType: "invite_link",
+          grantedMembershipRole: "manager",
+          tokenValue: "manager-invite-token"
+        }
+      ]);
 
     const result = await getTeamJoinAccessForUser(managerUser, sampleTeam.id, {
       findTeam,
@@ -330,20 +346,35 @@ describe("team service", () => {
     });
 
     expect(result.joinAccess.joinCode).toBe("OPS12345");
-    expect(result.joinAccess.inviteUrl).toContain("invite-token");
+    expect(result.managerJoinAccess.joinCode).toBe("MGR12345");
+    expect(result.managerJoinAccess.inviteUrl).toContain("manager-invite-token");
   });
 
-  it("regenerates team join access for managers", async () => {
+  it("regenerates member join access by default for managers", async () => {
     const findTeam = vi.fn().mockResolvedValue(sampleTeam);
+    const listTokens = vi.fn().mockResolvedValue([
+      {
+        tokenType: "join_code",
+        grantedMembershipRole: "manager",
+        tokenValue: "MGR12345"
+      },
+      {
+        tokenType: "invite_link",
+        grantedMembershipRole: "manager",
+        tokenValue: "manager-invite-token"
+      }
+    ]);
     const revokeTokens = vi.fn().mockResolvedValue(2);
     const insertToken = vi
       .fn()
       .mockResolvedValueOnce({
         tokenType: "join_code",
+        grantedMembershipRole: "member",
         tokenValue: "OPS12345"
       })
       .mockResolvedValueOnce({
         tokenType: "invite_link",
+        grantedMembershipRole: "member",
         tokenValue: "invite-token"
       });
     const runTransaction = vi.fn(async (work) => work({}));
@@ -351,8 +382,10 @@ describe("team service", () => {
     const result = await regenerateTeamJoinAccessForUser(
       managerUser,
       sampleTeam.id,
+      {},
       {
         findTeam,
+        listTokens,
         revokeTokens,
         insertToken,
         runTransaction
@@ -360,11 +393,63 @@ describe("team service", () => {
     );
 
     expect(revokeTokens).toHaveBeenCalledWith(
-      { teamId: sampleTeam.id },
+      { teamId: sampleTeam.id, grantedMembershipRole: "member" },
       { pool: {} }
     );
     expect(insertToken).toHaveBeenCalledTimes(2);
     expect(result.joinAccess.joinCode).toBe("OPS12345");
+  });
+
+  it("regenerates manager join access for managers", async () => {
+    const findTeam = vi.fn().mockResolvedValue(sampleTeam);
+    const listTokens = vi.fn().mockResolvedValue([
+      {
+        tokenType: "join_code",
+        grantedMembershipRole: "member",
+        tokenValue: "OPS12345"
+      },
+      {
+        tokenType: "invite_link",
+        grantedMembershipRole: "member",
+        tokenValue: "invite-token"
+      }
+    ]);
+    const revokeTokens = vi.fn().mockResolvedValue(2);
+    const insertToken = vi
+      .fn()
+      .mockResolvedValueOnce({
+        tokenType: "join_code",
+        grantedMembershipRole: "manager",
+        tokenValue: "MGR12345"
+      })
+      .mockResolvedValueOnce({
+        tokenType: "invite_link",
+        grantedMembershipRole: "manager",
+        tokenValue: "manager-invite-token"
+      });
+    const runTransaction = vi.fn(async (work) => work({}));
+
+    const result = await regenerateTeamJoinAccessForUser(
+      managerUser,
+      sampleTeam.id,
+      {
+        membershipRole: "manager"
+      },
+      {
+        findTeam,
+        listTokens,
+        revokeTokens,
+        insertToken,
+        runTransaction
+      }
+    );
+
+    expect(revokeTokens).toHaveBeenCalledWith(
+      { teamId: sampleTeam.id, grantedMembershipRole: "manager" },
+      { pool: {} }
+    );
+    expect(result.regeneratedMembershipRole).toBe("manager");
+    expect(result.managerJoinAccess.joinCode).toBe("MGR12345");
   });
 
   it("joins a team with valid employee join access", async () => {
@@ -372,6 +457,7 @@ describe("team service", () => {
       id: "token-1",
       teamId: sampleTeam.id,
       tokenType: "join_code",
+      grantedMembershipRole: "member",
       tokenValue: "OPS12345",
       isActive: true,
       revokedAt: null,
@@ -417,6 +503,7 @@ describe("team service", () => {
       id: "token-1",
       teamId: sampleTeam.id,
       tokenType: "invite_link",
+      grantedMembershipRole: "member",
       tokenValue: "invite-token",
       isActive: true,
       revokedAt: null,
@@ -458,6 +545,7 @@ describe("team service", () => {
     const findAccessToken = vi.fn().mockResolvedValue({
       id: "token-1",
       teamId: sampleTeam.id,
+      grantedMembershipRole: "member",
       isActive: false,
       revokedAt: "2026-04-17T00:00:00.000Z",
       expiresAt: null
@@ -475,6 +563,7 @@ describe("team service", () => {
     const findAccessToken = vi.fn().mockResolvedValue({
       id: "token-1",
       teamId: sampleTeam.id,
+      grantedMembershipRole: "member",
       isActive: true,
       revokedAt: null,
       expiresAt: "2020-01-01T00:00:00.000Z"
@@ -485,6 +574,72 @@ describe("team service", () => {
     ).rejects.toMatchObject({
       statusCode: 400,
       code: "TEAM_JOIN_ACCESS_EXPIRED"
+    });
+  });
+
+  it("allows a manager to join through manager-only access", async () => {
+    const findAccessToken = vi.fn().mockResolvedValue({
+      id: "token-1",
+      teamId: sampleTeam.id,
+      tokenType: "join_code",
+      grantedMembershipRole: "manager",
+      tokenValue: "MGR12345",
+      isActive: true,
+      revokedAt: null,
+      expiresAt: null
+    });
+    const findTeam = vi.fn().mockResolvedValue(sampleTeam);
+    const findMember = vi.fn().mockResolvedValue(null);
+    const insertTeamMember = vi.fn().mockResolvedValue({
+      teamId: sampleTeam.id,
+      userId: managerUser.id,
+      membershipRole: "manager",
+      membershipStatus: "active"
+    });
+    const recordMembershipEvent = vi.fn().mockResolvedValue({});
+    const runTransaction = vi.fn(async (work) => work({}));
+
+    const result = await joinTeamForUser(
+      managerUser,
+      { joinCode: "MGR12345" },
+      {
+        findAccessToken,
+        findTeam,
+        findMember,
+        insertTeamMember,
+        recordMembershipEvent,
+        runTransaction
+      }
+    );
+
+    expect(insertTeamMember).toHaveBeenCalledWith(
+      {
+        teamId: sampleTeam.id,
+        userId: managerUser.id,
+        membershipRole: "manager"
+      },
+      { pool: {} }
+    );
+    expect(result.membership.membershipRole).toBe("manager");
+  });
+
+  it("rejects employee-role join access for manager accounts", async () => {
+    const findAccessToken = vi.fn().mockResolvedValue({
+      id: "token-1",
+      teamId: sampleTeam.id,
+      tokenType: "join_code",
+      grantedMembershipRole: "member",
+      tokenValue: "OPS12345",
+      isActive: true,
+      revokedAt: null,
+      expiresAt: null
+    });
+
+    await expect(
+      joinTeamForUser(managerUser, { joinCode: "OPS12345" }, { findAccessToken })
+    ).rejects.toMatchObject({
+      statusCode: 403,
+      code: "TEAM_JOIN_FORBIDDEN"
     });
   });
 

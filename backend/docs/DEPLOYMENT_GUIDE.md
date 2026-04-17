@@ -33,6 +33,7 @@ Before deploying:
    - `SUPABASE_JWT_SECRET`
    - `DATABASE_URL`
    - `FRONTEND_APP_ORIGIN`
+   - `SUPABASE_AUTH_EMAIL_REDIRECT_TO`
 
 ## Option A - Deploy with the Included `render.yaml`
 
@@ -69,6 +70,7 @@ These should be set in Render:
 | `NODE_ENV` | `production` | Required for production mode |
 | `API_PREFIX` | `/api/v1` | Keep consistent with docs and frontend |
 | `FRONTEND_APP_ORIGIN` | your deployed frontend origin | Comma-separate multiple allowed origins if needed |
+| `SUPABASE_AUTH_EMAIL_REDIRECT_TO` | verification destination URL | Where Supabase should redirect users after they confirm signup |
 | `SUPABASE_PROJECT_REF` | Supabase project ref | Helpful for operational clarity |
 | `SUPABASE_URL` | Supabase project settings | Required for auth |
 | `SUPABASE_ANON_KEY` | Supabase project settings | Required for backend-managed login |
@@ -123,6 +125,8 @@ Before a presentation:
 
 - keep real secrets only in Render environment-variable settings, not in the repo
 - if the frontend is deployed separately, remember to update `FRONTEND_APP_ORIGIN`
+- keep Supabase Auth email confirmations enabled when self-service signup is live
+- if you need verification emails to reach arbitrary inboxes, configure a production SMTP provider in Supabase Auth
 - if deployment fails but health passes locally, compare Render environment variables first
 - if auth fails in production, verify `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_JWT_SECRET`
 - if database connectivity fails, verify the Supabase pooler `DATABASE_URL`

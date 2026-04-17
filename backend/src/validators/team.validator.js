@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TEAM_MEMBERSHIP_ROLES } from "../constants/teamMemberships.js";
 
 export const teamIdParamsSchema = z.object({
   teamId: z.string().uuid()
@@ -6,7 +7,10 @@ export const teamIdParamsSchema = z.object({
 
 const uuidSchema = z.string().uuid();
 const optionalTextSchema = z.union([z.string().trim().max(5000), z.null()]).optional();
-const membershipRoleSchema = z.enum(["member", "manager"]);
+const membershipRoleSchema = z.enum([
+  TEAM_MEMBERSHIP_ROLES.MEMBER,
+  TEAM_MEMBERSHIP_ROLES.MANAGER
+]);
 
 export const createTeamBodySchema = z
   .object({
@@ -31,5 +35,11 @@ export const addTeamMemberBodySchema = z
   .object({
     userId: uuidSchema,
     membershipRole: membershipRoleSchema.default("member")
+  })
+  .strict();
+
+export const regenerateTeamJoinAccessBodySchema = z
+  .object({
+    membershipRole: membershipRoleSchema.default(TEAM_MEMBERSHIP_ROLES.MEMBER)
   })
   .strict();

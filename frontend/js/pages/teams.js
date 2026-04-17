@@ -27,6 +27,19 @@ export default async function teamsPage(container, params) {
   }
 }
 
+async function openCreateTeamFlow(baseTeams) {
+  const bundles = await loadTeamBundles(baseTeams);
+  openTeamEditorModal({
+    mode: 'create',
+    availablePeople: buildAssignablePeople(bundles, getUser()),
+    onSave: async ({ name, description, members }) => {
+      const created = await createPersistedTeam({ name, description, members });
+      showSuccess('New team created successfully.');
+      window.location.hash = `#/teams/${created.id}`;
+    }
+  });
+}
+
 async function renderTeamList(container) {
   renderHeader('Teams', isManager() ? 'Rosters and membership' : 'Your teams and teammates');
   clearElement(container);
@@ -55,7 +68,7 @@ async function renderTeamList(container) {
         el('p', {},
           isEmployee()
             ? 'Use a join code or invite link to join your first team.'
-            : 'You are not part of any teams yet.'
+            : 'Create your first team to start assigning work.'
         )
       );
 
@@ -66,6 +79,14 @@ async function renderTeamList(container) {
             type: 'button',
             onClick: () => { window.location.hash = '#/join'; }
           }, 'Join a Team')
+        ));
+      } else if (isManager()) {
+        emptyPanel.appendChild(el('div', { className: 'mteams-empty__action' },
+          el('button', {
+            className: 'mteams-btn mteams-btn--primary',
+            type: 'button',
+            onClick: () => openCreateTeamFlow(baseTeams)
+          }, '+ New Team')
         ));
       }
 
@@ -95,18 +116,7 @@ async function renderTeamList(container) {
       actionCluster.appendChild(el('button', {
         className: 'mteams-btn mteams-btn--primary',
         type: 'button',
-        onClick: async () => {
-          const bundles = await loadTeamBundles(baseTeams);
-          openTeamEditorModal({
-            mode: 'create',
-            availablePeople: buildAssignablePeople(bundles, getUser()),
-            onSave: async ({ name, description, members }) => {
-              const created = await createPersistedTeam({ name, description, members });
-              showSuccess('New team created successfully.');
-              window.location.hash = `#/teams/${created.id}`;
-            }
-          });
-        }
+        onClick: () => openCreateTeamFlow(baseTeams)
       }, '+ New Team'));
     }
 
@@ -163,7 +173,8 @@ async function renderTeamDetail(container, teamId, { showBackButton = true } = {
 
     let team = {};
     let members = [];
-    let joinAccess = null;
+    let employeeJoinAccess = null;
+    let managerJoinAccess = null;
 
     if (isLocalTeam(teamId)) {
       const resolved = getTeamDetail(teamId, { currentUser });
@@ -182,7 +193,9 @@ async function renderTeamDetail(container, teamId, { showBackButton = true } = {
       if (isManager() && team.canManageTeam) {
         try {
           const joinAccessResponse = await api.get(`/teams/${teamId}/join-access`);
-          joinAccess = joinAccessResponse.data.joinAccess || null;
+          const payload = joinAccessResponse.data || {};
+          employeeJoinAccess = payload.employeeJoinAccess || payload.joinAccess || null;
+          managerJoinAccess = payload.managerJoinAccess || null;
         } catch (joinAccessError) {
           showError(joinAccessError);
         }
@@ -214,6 +227,13 @@ async function renderTeamDetail(container, teamId, { showBackButton = true } = {
         type: 'button',
         onClick: () => { window.location.hash = '#/teams'; }
       }, '\u2039 Teams'));
+    }
+    if (isManager()) {
+      topActions.appendChild(el('button', {
+        className: 'mteams-btn mteams-btn--ghost',
+        type: 'button',
+        onClick: () => openCreateTeamFlow(baseTeams)
+      }, '+ New Team'));
     }
     if (isEmployee() && !team.isLocalTeam && currentMember?.membershipRole !== 'manager') {
       topActions.appendChild(el('button', {
@@ -259,23 +279,51 @@ async function renderTeamDetail(container, teamId, { showBackButton = true } = {
     }
 
     // --- Join access section ------------------------------------------
-    if (joinAccess) {
-      shell.appendChild(buildMteamsSection('Join access', 'Share a code or link so employees can join directly.',
-        buildJoinAccessCard({
+    if (employeeJoinAccess || managerJoinAccess) {
+      const regenerate = async (membershipRole, label) => {
+        const confirmed = window.confirm(
+          `Regenerate ${label} access for ${team.name}? Existing ${label} codes and links will stop working.`
+        );
+        if (!confirmed) return;
+        try {
+          await api.post(`/teams/${team.id}/join-access/regenerate`, { membershipRole });
+          showSuccess(`${capitalize(label)} access regenerated successfully.`);
+          await renderTeamDetail(container, team.id, { showBackButton });
+        } catch (error) {
+          showError(error);
+        }
+      };
+
+      const accessGroups = el('div', { className: 'join-access-group' });
+
+      if (employeeJoinAccess) {
+        accessGroups.appendChild(buildJoinAccessBlock({
+          eyebrow: 'Employee access',
+          title: 'Employee join',
+          note: 'Anyone who joins with this code or link becomes an employee on this team.',
           team,
-          joinAccess,
-          onRegenerate: async () => {
-            const confirmed = window.confirm(`Regenerate join access for ${team.name}? Existing links and codes will stop working.`);
-            if (!confirmed) return;
-            try {
-              await api.post(`/teams/${team.id}/join-access/regenerate`);
-              showSuccess('Join access regenerated successfully.');
-              await renderTeamDetail(container, team.id, { showBackButton });
-            } catch (error) {
-              showError(error);
-            }
-          }
-        })
+          access: employeeJoinAccess,
+          roleLabel: 'employee',
+          onRegenerate: () => regenerate('member', 'employee')
+        }));
+      }
+
+      if (managerJoinAccess) {
+        accessGroups.appendChild(buildJoinAccessBlock({
+          eyebrow: 'Manager access',
+          title: 'Manager join',
+          note: 'Share this only with people who should co-manage this team.',
+          team,
+          access: managerJoinAccess,
+          roleLabel: 'manager',
+          onRegenerate: () => regenerate('manager', 'manager')
+        }));
+      }
+
+      shell.appendChild(buildMteamsSection(
+        'Join access',
+        'Separate codes for employees and managers.',
+        accessGroups
       ));
     }
 
@@ -677,40 +725,51 @@ function detailCard(title, body) {
   );
 }
 
-function buildJoinAccessCard({ team, joinAccess, onRegenerate }) {
-  return el('div', { className: 'join-access-card' },
+function buildJoinAccessBlock({ eyebrow, title, note, team, access, roleLabel, onRegenerate }) {
+  const roleClass = roleLabel === 'manager' ? 'join-access-block--manager' : 'join-access-block--employee';
+  const block = el('div', { className: `join-access-block ${roleClass}` });
+
+  block.appendChild(el('div', { className: 'join-access-block__head' },
+    el('div', { className: 'join-access-block__copy' },
+      el('span', { className: `join-access-block__eyebrow join-access-block__eyebrow--${roleLabel}` }, eyebrow),
+      el('h4', { className: 'join-access-block__title' }, title),
+      el('p', { className: 'join-access-block__note' }, note)
+    ),
+    el('button', {
+      className: 'btn btn-outline btn-sm join-access-block__regen',
+      type: 'button',
+      onClick: onRegenerate
+    }, access?.joinCode || access?.inviteUrl ? 'Regenerate' : 'Generate access')
+  ));
+
+  block.appendChild(el('div', { className: 'join-access-card' },
     joinAccessRow(
       'Join code',
-      joinAccess.joinCode || 'Unavailable',
-      'Share this code with employees who should join this team.',
-      joinAccess.joinCode
+      access?.joinCode || 'Unavailable',
+      `Share this code with ${roleLabel}s who should join ${team.name}.`,
+      access?.joinCode
         ? el('button', {
             className: 'btn btn-outline btn-sm',
             type: 'button',
-            onClick: () => copyToClipboard(joinAccess.joinCode, `Copied ${team.name} join code.`)
+            onClick: () => copyToClipboard(access.joinCode, `Copied ${roleLabel} join code.`)
           }, 'Copy code')
         : null
     ),
     joinAccessRow(
       'Invite link',
-      joinAccess.inviteUrl || 'Unavailable',
-      'Employees can open this link while signed in to join directly.',
-      el('div', { className: 'btn-group' },
-        joinAccess.inviteUrl
-          ? el('button', {
-              className: 'btn btn-outline btn-sm',
-              type: 'button',
-              onClick: () => copyToClipboard(joinAccess.inviteUrl, 'Copied invite link.')
-            }, 'Copy link')
-          : null,
-        el('button', {
-          className: 'btn btn-outline btn-sm',
-          type: 'button',
-          onClick: onRegenerate
-        }, joinAccess.inviteUrl ? 'Regenerate' : 'Generate access')
-      )
+      access?.inviteUrl || 'Unavailable',
+      `${capitalize(roleLabel)}s can open this link while signed in to join directly.`,
+      access?.inviteUrl
+        ? el('button', {
+            className: 'btn btn-outline btn-sm',
+            type: 'button',
+            onClick: () => copyToClipboard(access.inviteUrl, `Copied ${roleLabel} invite link.`)
+          }, 'Copy link')
+        : null
     )
-  );
+  ));
+
+  return block;
 }
 
 function joinAccessRow(label, value, note, action) {

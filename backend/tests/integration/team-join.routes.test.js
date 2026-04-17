@@ -1,13 +1,15 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { resolveAuthenticatedUser, joinTeamForUser } = vi.hoisted(() => ({
+const { signupUser, resolveAuthenticatedUser, joinTeamForUser } = vi.hoisted(() => ({
+  signupUser: vi.fn(),
   resolveAuthenticatedUser: vi.fn(),
   joinTeamForUser: vi.fn()
 }));
 
 vi.mock("../../src/services/auth.service.js", () => ({
   loginUser: vi.fn(),
+  signupUser,
   resolveAuthenticatedUser
 }));
 
@@ -51,6 +53,7 @@ describe("team join routes", () => {
       membership: {
         teamId: "123e4567-e89b-42d3-a456-426614174000",
         userId: "22222222-2222-2222-2222-222222222222",
+        membershipRole: "member",
         membershipStatus: "active"
       },
       rejoined: false
@@ -77,6 +80,7 @@ describe("team join routes", () => {
       membership: {
         teamId: "123e4567-e89b-42d3-a456-426614174000",
         userId: "22222222-2222-2222-2222-222222222222",
+        membershipRole: "member",
         membershipStatus: "active"
       },
       rejoined: true
@@ -106,7 +110,7 @@ describe("team join routes", () => {
     expect(response.body.error.code).toBe("VALIDATION_ERROR");
   });
 
-  it("rejects team join for managers", async () => {
+  it("allows manager join when the token grants a manager membership", async () => {
     resolveAuthenticatedUser.mockResolvedValue({
       user: {
         id: "11111111-1111-1111-1111-111111111111",
@@ -117,6 +121,19 @@ describe("team join routes", () => {
       },
       accessToken: "access-token"
     });
+    joinTeamForUser.mockResolvedValue({
+      team: {
+        id: "123e4567-e89b-42d3-a456-426614174000",
+        name: "Operations Team"
+      },
+      membership: {
+        teamId: "123e4567-e89b-42d3-a456-426614174000",
+        userId: "11111111-1111-1111-1111-111111111111",
+        membershipRole: "manager",
+        membershipStatus: "active"
+      },
+      rejoined: false
+    });
 
     const response = await request(app)
       .post("/api/v1/team-join")
@@ -125,7 +142,7 @@ describe("team join routes", () => {
         joinCode: "OPS12345"
       });
 
-    expect(response.status).toBe(403);
-    expect(response.body.error.code).toBe("FORBIDDEN");
+    expect(response.status).toBe(201);
+    expect(response.body.message).toBe("Manager team access activated successfully.");
   });
 });

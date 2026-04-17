@@ -1,6 +1,6 @@
-# Cloud-Based Workforce Task Management System
+# TaskTrail
 
-University cloud computing project for a workforce task management web application. The repository is organized as a simple monorepo so the backend and frontend teams can work in parallel without mixing concerns.
+University cloud computing project for TaskTrail, a team-based task assignment web application. The repository is organized as a simple monorepo so the backend and frontend teams can work in parallel without mixing concerns.
 
 ## Project Overview
 
@@ -53,7 +53,7 @@ Current frontend experience:
 - Employee join, leave, and rejoin flow
 - Backend-backed self-profile editing for safe personal info fields
 - Backend-backed notification list, read, and dismiss actions
-- Responsive TaskFlow-styled UI using shared components and hash-based routing
+- Responsive TaskTrail UI using shared components and hash-based routing
 
 Frontend notes:
 

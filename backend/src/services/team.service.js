@@ -3,6 +3,7 @@ import { env } from "../config/env.js";
 import { APP_ROLES, PRIVILEGED_ROLES } from "../constants/roles.js";
 import {
   TEAM_ACCESS_TOKEN_TYPES,
+  TEAM_MEMBERSHIP_ROLES,
   TEAM_MEMBERSHIP_EVENT_TYPES,
   TEAM_MEMBERSHIP_STATUSES
 } from "../constants/teamMemberships.js";
@@ -32,6 +33,8 @@ import { createAppError } from "../utils/appError.js";
 import { createTeamAddedNotification } from "./notification.service.js";
 
 const isAdminUser = (authUser) => authUser.appRole === APP_ROLES.ADMIN;
+const isManagerLikeUser = (authUser) =>
+  authUser.appRole === APP_ROLES.MANAGER || isAdminUser(authUser);
 const isPrivilegedUser = (authUser) => PRIVILEGED_ROLES.includes(authUser.appRole);
 const isEmployeeUser = (authUser) => authUser.appRole === APP_ROLES.EMPLOYEE;
 
@@ -102,6 +105,16 @@ const buildInviteUrl = (inviteToken) => {
   return `${baseOrigin}/#/join?inviteToken=${encodeURIComponent(inviteToken)}`;
 };
 
+const buildJoinAccessUrl = (inviteToken, membershipRole) => {
+  const inviteUrl = buildInviteUrl(inviteToken);
+
+  if (membershipRole === TEAM_MEMBERSHIP_ROLES.MANAGER) {
+    return `${inviteUrl}&membershipRole=${encodeURIComponent(membershipRole)}`;
+  }
+
+  return inviteUrl;
+};
+
 const generateJoinCode = (length = 8) =>
   Array.from(crypto.randomBytes(length))
     .map((value) => JOIN_CODE_ALPHABET[value % JOIN_CODE_ALPHABET.length])
@@ -128,7 +141,7 @@ const runInTransaction = async (
   }
 };
 
-const shapeJoinAccess = (team, tokens) => {
+const shapeJoinAccess = (team, tokens, membershipRole) => {
   const joinCodeToken = tokens.find(
     (token) => token.tokenType === TEAM_ACCESS_TOKEN_TYPES.JOIN_CODE
   );
@@ -139,16 +152,36 @@ const shapeJoinAccess = (team, tokens) => {
   return {
     teamId: team.id,
     teamName: team.name,
+    membershipRole,
     joinCode: joinCodeToken?.tokenValue ?? null,
     inviteToken: inviteLinkToken?.tokenValue ?? null,
     inviteUrl: inviteLinkToken
-      ? buildInviteUrl(inviteLinkToken.tokenValue)
+      ? buildJoinAccessUrl(inviteLinkToken.tokenValue, membershipRole)
       : null
   };
 };
 
+const buildJoinAccessPayload = (team, employeeTokens, managerTokens) => ({
+  joinAccess: shapeJoinAccess(
+    team,
+    employeeTokens,
+    TEAM_MEMBERSHIP_ROLES.MEMBER
+  ),
+  employeeJoinAccess: shapeJoinAccess(
+    team,
+    employeeTokens,
+    TEAM_MEMBERSHIP_ROLES.MEMBER
+  ),
+  managerJoinAccess: shapeJoinAccess(
+    team,
+    managerTokens,
+    TEAM_MEMBERSHIP_ROLES.MANAGER
+  )
+});
+
 const createJoinAccessPairInTransaction = async (
   teamId,
+  grantedMembershipRole,
   createdByUserId,
   {
     revokeTokens = revokeActiveTeamAccessTokens,
@@ -157,7 +190,10 @@ const createJoinAccessPairInTransaction = async (
   client
 ) => {
   await revokeTokens(
-    { teamId },
+    {
+      teamId,
+      grantedMembershipRole
+    },
     { pool: client }
   );
 
@@ -165,6 +201,7 @@ const createJoinAccessPairInTransaction = async (
     {
       teamId,
       tokenType: TEAM_ACCESS_TOKEN_TYPES.JOIN_CODE,
+      grantedMembershipRole,
       tokenValue: generateJoinCode(),
       createdByUserId
     },
@@ -175,6 +212,7 @@ const createJoinAccessPairInTransaction = async (
     {
       teamId,
       tokenType: TEAM_ACCESS_TOKEN_TYPES.INVITE_LINK,
+      grantedMembershipRole,
       tokenValue: generateInviteToken(),
       createdByUserId
     },
@@ -187,6 +225,7 @@ const createJoinAccessPairInTransaction = async (
 const ensureCurrentJoinAccess = async (
   team,
   authUser,
+  grantedMembershipRole,
   {
     listTokens = listActiveTeamAccessTokens,
     runTransaction = runInTransaction,
@@ -195,7 +234,8 @@ const ensureCurrentJoinAccess = async (
   } = {}
 ) => {
   const currentTokens = await listTokens({
-    teamId: team.id
+    teamId: team.id,
+    grantedMembershipRole
   });
 
   const hasJoinCode = currentTokens.some(
@@ -213,6 +253,7 @@ const ensureCurrentJoinAccess = async (
     (client) =>
       createJoinAccessPairInTransaction(
         team.id,
+        grantedMembershipRole,
         authUser.id,
         {
           revokeTokens,
@@ -245,6 +286,33 @@ const ensureValidJoinAccessToken = (token) => {
       statusCode: 400,
       code: "TEAM_JOIN_ACCESS_EXPIRED",
       message: "This join access has expired."
+    });
+  }
+};
+
+const ensureJoinAccessMatchesAppRole = (
+  authUser,
+  grantedMembershipRole
+) => {
+  if (
+    grantedMembershipRole === TEAM_MEMBERSHIP_ROLES.MEMBER
+    && !isEmployeeUser(authUser)
+  ) {
+    throw createAppError({
+      statusCode: 403,
+      code: "TEAM_JOIN_FORBIDDEN",
+      message: "Only employee accounts can use employee team join access."
+    });
+  }
+
+  if (
+    grantedMembershipRole === TEAM_MEMBERSHIP_ROLES.MANAGER
+    && !isManagerLikeUser(authUser)
+  ) {
+    throw createAppError({
+      statusCode: 403,
+      code: "TEAM_JOIN_FORBIDDEN",
+      message: "Only manager accounts can use manager team join access."
     });
   }
 };
@@ -405,9 +473,21 @@ export const getTeamJoinAccessForUser = async (
   );
 
   const team = await ensureTeamManageable(authUser, teamId, { findTeam });
-  const tokens = await ensureCurrentJoinAccess(
+  const employeeTokens = await ensureCurrentJoinAccess(
     team,
     authUser,
+    TEAM_MEMBERSHIP_ROLES.MEMBER,
+    {
+      listTokens,
+      runTransaction,
+      revokeTokens,
+      insertToken
+    }
+  );
+  const managerTokens = await ensureCurrentJoinAccess(
+    team,
+    authUser,
+    TEAM_MEMBERSHIP_ROLES.MANAGER,
     {
       listTokens,
       runTransaction,
@@ -418,15 +498,17 @@ export const getTeamJoinAccessForUser = async (
 
   return {
     team: decorateTeam(team, authUser),
-    joinAccess: shapeJoinAccess(team, tokens)
+    ...buildJoinAccessPayload(team, employeeTokens, managerTokens)
   };
 };
 
 export const regenerateTeamJoinAccessForUser = async (
   authUser,
   teamId,
+  input = {},
   {
     findTeam = findAccessibleTeamById,
+    listTokens = listActiveTeamAccessTokens,
     runTransaction = runInTransaction,
     revokeTokens = revokeActiveTeamAccessTokens,
     insertToken = createTeamAccessToken
@@ -439,9 +521,13 @@ export const regenerateTeamJoinAccessForUser = async (
   );
 
   const team = await ensureTeamManageable(authUser, teamId, { findTeam });
-  const tokens = await runTransaction((client) =>
+  const grantedMembershipRole =
+    input.membershipRole ?? TEAM_MEMBERSHIP_ROLES.MEMBER;
+
+  const regeneratedTokens = await runTransaction((client) =>
     createJoinAccessPairInTransaction(
       team.id,
+      grantedMembershipRole,
       authUser.id,
       {
         revokeTokens,
@@ -451,9 +537,38 @@ export const regenerateTeamJoinAccessForUser = async (
     )
   );
 
+  const employeeTokens = grantedMembershipRole === TEAM_MEMBERSHIP_ROLES.MEMBER
+    ? regeneratedTokens
+    : await ensureCurrentJoinAccess(
+      team,
+      authUser,
+      TEAM_MEMBERSHIP_ROLES.MEMBER,
+      {
+        listTokens,
+        runTransaction,
+        revokeTokens,
+        insertToken
+      }
+    );
+
+  const managerTokens = grantedMembershipRole === TEAM_MEMBERSHIP_ROLES.MANAGER
+    ? regeneratedTokens
+    : await ensureCurrentJoinAccess(
+      team,
+      authUser,
+      TEAM_MEMBERSHIP_ROLES.MANAGER,
+      {
+        listTokens,
+        runTransaction,
+        revokeTokens,
+        insertToken
+      }
+    );
+
   return {
     team: decorateTeam(team, authUser),
-    joinAccess: shapeJoinAccess(team, tokens)
+    regeneratedMembershipRole: grantedMembershipRole,
+    ...buildJoinAccessPayload(team, employeeTokens, managerTokens)
   };
 };
 
@@ -676,12 +791,6 @@ export const joinTeamForUser = async (
     runTransaction = runInTransaction
   } = {}
 ) => {
-  ensureEmployeeUser(
-    authUser,
-    "TEAM_JOIN_FORBIDDEN",
-    "Only employees can join teams through join access."
-  );
-
   const tokenType = input.joinCode
     ? TEAM_ACCESS_TOKEN_TYPES.JOIN_CODE
     : TEAM_ACCESS_TOKEN_TYPES.INVITE_LINK;
@@ -693,6 +802,7 @@ export const joinTeamForUser = async (
   });
 
   ensureValidJoinAccessToken(accessToken);
+  ensureJoinAccessMatchesAppRole(authUser, accessToken.grantedMembershipRole);
 
   const team = await findTeam(accessToken.teamId);
 
@@ -726,22 +836,13 @@ export const joinTeamForUser = async (
     });
   }
 
-  if (existingMembership?.membershipRole === "manager") {
-    throw createAppError({
-      statusCode: 403,
-      code: "TEAM_REJOIN_FORBIDDEN",
-      message:
-        "Manager memberships cannot be restored through employee join access."
-    });
-  }
-
   const membership = await runTransaction(async (client) => {
     if (existingMembership?.membershipStatus === TEAM_MEMBERSHIP_STATUSES.LEFT) {
       const reactivatedMembership = await reactivateMember(
         {
           teamId: team.id,
           userId: authUser.id,
-          membershipRole: "member"
+          membershipRole: accessToken.grantedMembershipRole
         },
         { pool: client }
       );
@@ -768,7 +869,7 @@ export const joinTeamForUser = async (
       {
         teamId: team.id,
         userId: authUser.id,
-        membershipRole: "member"
+        membershipRole: accessToken.grantedMembershipRole
       },
       { pool: client }
     );

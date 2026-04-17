@@ -62,7 +62,7 @@ export function renderSidebar() {
 
   const brand = el('div', { className: 'sidebar-brand' },
     el('span', { className: 'brand-icon' }, '⚡'),
-    el('span', { className: 'brand-text' }, 'TaskFlow')
+    el('span', { className: 'brand-text' }, 'TaskTrail')
   );
 
   const nav = el('nav', { className: 'sidebar-nav' });

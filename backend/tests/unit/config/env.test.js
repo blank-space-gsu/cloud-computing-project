@@ -13,6 +13,7 @@ describe("environment configuration", () => {
       "http://127.0.0.1:5500",
       "http://[::1]:5500"
     ]);
+    expect(result.authEmailRedirectTo).toBe("http://localhost:5500");
     expect(result.DATABASE_SSL_REJECT_UNAUTHORIZED).toBe(false);
   });
 
@@ -52,6 +53,15 @@ describe("environment configuration", () => {
       "http://localhost:5500",
       "http://127.0.0.1:5500"
     ]);
+  });
+
+  it("allows an explicit auth email redirect override", () => {
+    const result = loadEnv({
+      FRONTEND_APP_ORIGIN: "http://localhost:5500",
+      SUPABASE_AUTH_EMAIL_REDIRECT_TO: "http://localhost:5500/auth/confirm"
+    });
+
+    expect(result.authEmailRedirectTo).toBe("http://localhost:5500/auth/confirm");
   });
 
   it("throws a readable error when the API prefix is invalid", () => {

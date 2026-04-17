@@ -2,6 +2,7 @@ import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
+  signupUser,
   resolveAuthenticatedUser,
   listTeamsForUser,
   getTeamByIdForUser,
@@ -15,6 +16,7 @@ const {
   leaveTeamForUser,
   joinTeamForUser
 } = vi.hoisted(() => ({
+    signupUser: vi.fn(),
     resolveAuthenticatedUser: vi.fn(),
     listTeamsForUser: vi.fn(),
     getTeamByIdForUser: vi.fn(),
@@ -31,6 +33,7 @@ const {
 
 vi.mock("../../src/services/auth.service.js", () => ({
   loginUser: vi.fn(),
+  signupUser,
   resolveAuthenticatedUser
 }));
 
@@ -205,8 +208,15 @@ describe("teams routes", () => {
       },
       joinAccess: {
         teamId: validTeamId,
+        membershipRole: "member",
         joinCode: "OPS12345",
         inviteUrl: "http://localhost:5500/#/join?inviteToken=abc"
+      },
+      managerJoinAccess: {
+        teamId: validTeamId,
+        membershipRole: "manager",
+        joinCode: "MGR12345",
+        inviteUrl: "http://localhost:5500/#/join?inviteToken=mgr"
       }
     });
 
@@ -216,6 +226,7 @@ describe("teams routes", () => {
 
     expect(response.status).toBe(200);
     expect(response.body.data.joinAccess.joinCode).toBe("OPS12345");
+    expect(response.body.data.managerJoinAccess.joinCode).toBe("MGR12345");
   });
 
   it("regenerates team join access for managers", async () => {
@@ -226,9 +237,17 @@ describe("teams routes", () => {
       },
       joinAccess: {
         teamId: validTeamId,
+        membershipRole: "member",
         joinCode: "NEWCODE9",
         inviteUrl: "http://localhost:5500/#/join?inviteToken=new-token"
-      }
+      },
+      managerJoinAccess: {
+        teamId: validTeamId,
+        membershipRole: "manager",
+        joinCode: "MGRCODE9",
+        inviteUrl: "http://localhost:5500/#/join?inviteToken=mgr-token"
+      },
+      regeneratedMembershipRole: "manager"
     });
 
     const response = await request(app)
@@ -237,6 +256,39 @@ describe("teams routes", () => {
 
     expect(response.status).toBe(200);
     expect(response.body.data.joinAccess.joinCode).toBe("NEWCODE9");
+  });
+
+  it("accepts manager join-access regeneration for manager memberships", async () => {
+    regenerateTeamJoinAccessForUser.mockResolvedValue({
+      team: {
+        id: validTeamId,
+        name: "Operations Team"
+      },
+      joinAccess: {
+        teamId: validTeamId,
+        membershipRole: "member",
+        joinCode: "OPS12345",
+        inviteUrl: "http://localhost:5500/#/join?inviteToken=ops"
+      },
+      managerJoinAccess: {
+        teamId: validTeamId,
+        membershipRole: "manager",
+        joinCode: "MGR12345",
+        inviteUrl: "http://localhost:5500/#/join?inviteToken=mgr"
+      },
+      regeneratedMembershipRole: "manager"
+    });
+
+    const response = await request(app)
+      .post(`/api/v1/teams/${validTeamId}/join-access/regenerate`)
+      .set("Authorization", "Bearer access-token")
+      .send({
+        membershipRole: "manager"
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.regeneratedMembershipRole).toBe("manager");
+    expect(response.body.data.managerJoinAccess.joinCode).toBe("MGR12345");
   });
 
   it("adds a team member", async () => {

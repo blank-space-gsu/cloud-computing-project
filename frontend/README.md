@@ -2,7 +2,7 @@
 
 ## Overview
 
-This frontend is a plain HTML, CSS, and JavaScript single-page app for the Cloud-Based Workforce Task Management System. It uses hash-based routing and connects to the backend API under `/api/v1`.
+This frontend is a plain HTML, CSS, and JavaScript single-page app for TaskTrail. It uses hash-based routing and connects to the backend API under `/api/v1`.
 
 The live UI is now a focused team task-flow product. It uses the validated backend API for authentication, team join access, tasks, Worker Tracker, calendar, profile saving, and notifications. Backend logic remains isolated in `/backend`.
 
@@ -16,7 +16,7 @@ The live UI is now a focused team task-flow product. It uses the validated backe
 - Team join access management for managers
 - Backend-backed self-profile editing on the profile page
 - Backend-backed notification list, read, and dismiss actions
-- Responsive TaskFlow styling across the app
+- Responsive TaskTrail styling across the app
 
 Retired from the live app flow:
 

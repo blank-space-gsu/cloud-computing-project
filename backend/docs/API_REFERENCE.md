@@ -68,6 +68,69 @@ None.
 
 ## Auth
 
+### `POST /api/v1/auth/signup`
+
+**Purpose**
+Creates a real Supabase-backed account, stores the user’s global app role, sends the verification email through Supabase Auth, and returns a pending-verification payload.
+
+**Auth**
+No authentication required.
+
+**Request body**
+
+```json
+{
+  "email": "manager.new@tasktrail.local",
+  "password": "example-password",
+  "firstName": "Maya",
+  "lastName": "Manager",
+  "jobTitle": "Operations Manager",
+  "appRole": "manager"
+}
+```
+
+**Validation**
+
+- `email` must be a valid email address
+- `password` must be between 6 and 128 characters
+- `firstName` must not be blank
+- `lastName` must not be blank
+- `jobTitle` is optional
+- `appRole` must be exactly `manager` or `employee`
+
+**Success response**
+
+```json
+{
+  "success": true,
+  "message": "Signup successful. Check your inbox to verify your email.",
+  "data": {
+    "email": "manager.new@tasktrail.local",
+    "appRole": "manager",
+    "verificationRequired": true,
+    "verificationEmailSent": true,
+    "emailRedirectTo": "http://localhost:5500"
+  }
+}
+```
+
+**Response notes**
+
+- signup does **not** return an authenticated session
+- the frontend should show a "check your inbox" success state
+- the user must verify the email before normal password login succeeds
+
+**Error codes**
+
+- `400 VALIDATION_ERROR`
+- `400 INVALID_JSON`
+- `409 ACCOUNT_ALREADY_EXISTS`
+- `502 AUTH_SIGNUP_FAILED`
+- `502 AUTH_SIGNUP_ROLE_SYNC_FAILED`
+- `503 AUTH_CONFIGURATION_MISSING`
+- `503 AUTH_ADMIN_CONFIGURATION_MISSING`
+- `503 AUTH_EMAIL_CONFIRMATION_NOT_ENABLED`
+
 ### `POST /api/v1/auth/login`
 
 **Purpose**
@@ -140,6 +203,7 @@ No authentication required.
 - `400 VALIDATION_ERROR`
 - `400 INVALID_JSON`
 - `401 INVALID_CREDENTIALS`
+- `403 EMAIL_NOT_VERIFIED`
 - `403 ACCOUNT_NOT_PROVISIONED`
 - `403 ACCOUNT_DISABLED`
 - `503 AUTH_CONFIGURATION_MISSING`
@@ -447,10 +511,21 @@ Returns the current manager-facing join code and invite link for a manageable te
 **Auth**
 Bearer token required, role must be `manager` or `admin`.
 
-**Notes**
+**Response notes**
 
-- if the team has no active join access yet, the backend generates the current pair lazily
-- join access only creates employee/member memberships
+- `data.team` contains the manageable team summary
+- `data.joinAccess` remains the compatibility alias for employee/member access
+- `data.employeeJoinAccess` contains the active employee/member join code + invite link pair
+- `data.managerJoinAccess` contains the active manager-only join code + invite link pair
+- each join-access object includes:
+  - `membershipRole`
+  - `joinCode`
+  - `inviteToken`
+  - `inviteUrl`
+- if either access pair is missing, the backend generates it lazily
+- employee access only creates `member` memberships
+- manager access only creates `manager` memberships
+- the frontend should treat employee and manager join access as separate controls
 
 ### `POST /api/v1/teams/:teamId/join-access/regenerate`
 
@@ -459,6 +534,26 @@ Revokes the current join code and invite link for a manageable team and returns 
 
 **Auth**
 Bearer token required, role must be `manager` or `admin`.
+
+**Request body**
+
+```json
+{
+  "membershipRole": "manager"
+}
+```
+
+**Validation**
+
+- `membershipRole` is optional
+- when omitted, the backend regenerates employee/member access
+- supported values are `member` and `manager`
+
+**Notes**
+
+- only the requested membership-role access pair is regenerated
+- the response still includes both `employeeJoinAccess` and `managerJoinAccess`
+- `data.regeneratedMembershipRole` identifies which pair was rotated
 
 ### `DELETE /api/v1/teams/:teamId/members/:userId`
 
@@ -492,10 +587,10 @@ Bearer token required, role must be `employee`.
 ### `POST /api/v1/team-join`
 
 **Purpose**
-Allows an authenticated employee to join a team using either a join code or an invite token.
+Allows an authenticated user to join a team using either a join code or an invite token, with the granted membership role determined by the access token itself.
 
 **Auth**
-Bearer token required, role must be `employee`.
+Bearer token required.
 
 **Request body**
 
@@ -510,6 +605,11 @@ Provide exactly one of:
 - prior `left` memberships are reactivated and return the rejoin success message
 - prior `removed` memberships cannot self-reactivate in this slice
 - revoked or expired join access is rejected cleanly
+- employee/member access requires a globally `employee` user
+- manager access requires a globally `manager` or `admin` user
+- employee access can never create manager memberships
+- manager access can never create employee/member memberships
+- the frontend should not trust query-string role hints; the backend uses the stored token grant as source of truth
 
 ## Frontend Integration Notes
 
@@ -521,8 +621,9 @@ Provide exactly one of:
 - Use `GET /users` for manager/admin people pickers and directory search.
 - Use `PATCH /users/:userId/avatar` for manager/admin avatar URL updates.
 - Use `/teams` and `/teams/:teamId/members` to build team selectors and active roster cards.
-- Use `/teams/:teamId/join-access` and `/teams/:teamId/join-access/regenerate` for manager-facing join code and invite-link controls.
-- Use `/team-join` for employee self-join onboarding and `/teams/:teamId/members/me/leave` for self-leave.
+- Use `POST /auth/signup` when the UI needs self-service account creation with `appRole`.
+- Use `/teams/:teamId/join-access` and `/teams/:teamId/join-access/regenerate` for manager-facing employee/member and manager join-access controls.
+- Use `/team-join` for both employee self-join and manager self-join through manager-only team access, and `/teams/:teamId/members/me/leave` for employee self-leave.
 - Team roster payloads now include `email`, `avatarUrl`, and `isActive`.
 - Use `/tasks` for task lists, filtering, and urgency sorting.
 - Use `/task-assignments` for manager-driven assignment actions.

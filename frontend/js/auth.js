@@ -47,6 +47,34 @@ export async function login(email, password) {
   return currentUser;
 }
 
+export async function signup({ email, password, firstName, lastName, jobTitle, appRole }) {
+  const payload = {
+    email,
+    password,
+    firstName,
+    lastName,
+    appRole
+  };
+  const trimmedJobTitle = typeof jobTitle === 'string' ? jobTitle.trim() : '';
+  if (trimmedJobTitle) {
+    payload.jobTitle = trimmedJobTitle;
+  }
+
+  const { data } = await api.post('/auth/signup', payload);
+
+  // Backend now defers session creation until after email verification.
+  // The response is { email, appRole, verificationRequired, verificationEmailSent, emailRedirectTo }.
+  // Do NOT persist tokens and do NOT set currentUser here -- the caller renders
+  // a pending-verification state and the real session is established later via login().
+  return {
+    email: data?.email ?? email,
+    appRole: data?.appRole ?? appRole,
+    verificationRequired: data?.verificationRequired ?? true,
+    verificationEmailSent: data?.verificationEmailSent ?? true,
+    emailRedirectTo: data?.emailRedirectTo ?? null
+  };
+}
+
 export function logout() {
   currentUser = null;
   localStorage.removeItem('accessToken');

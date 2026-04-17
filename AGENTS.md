@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This file is the contributor handoff guide for the Cloud-Based Workforce Task Management System repository. It explains how to work safely in this repo, where the important backend materials live, and which parts of the old broader product have now been frozen so contributors can stay aligned with the focused task-flow product.
+This file is the contributor handoff guide for the TaskTrail repository. It explains how to work safely in this repo, where the important backend materials live, and which parts of the old broader product have now been frozen so contributors can stay aligned with the focused task-flow product.
 
 ## Repository Layout
 
@@ -151,6 +151,7 @@ supabase db push
 Current live-product surface:
 
 - `GET /api/v1/health`
+- `POST /api/v1/auth/signup`
 - `POST /api/v1/auth/login`
 - `GET /api/v1/auth/me`
 - `GET /api/v1/auth/manager-access`

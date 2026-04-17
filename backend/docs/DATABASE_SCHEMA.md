@@ -2,7 +2,7 @@
 
 ## Overview
 
-Phase 1 defines the normalized MVP schema for the workforce task management backend. It is designed around the clarified MVP:
+Phase 1 defines the normalized MVP schema for the TaskTrail backend. It is designed around the clarified MVP:
 
 - managers assign work to employees
 - employees see their assigned tasks
@@ -245,13 +245,14 @@ Stores append-only membership lifecycle history for add/join/leave/rejoin/remove
 ### `public.team_access_tokens`
 
 **Purpose**
-Stores active join codes and invite-link tokens for self-join onboarding.
+Stores active join codes and invite-link tokens for self-join onboarding, including whether a token grants employee/member or manager membership.
 
 | Column | Type | Null | Default | Notes |
 | --- | --- | --- | --- | --- |
 | `id` | `uuid` | No | `extensions.gen_random_uuid()` | Primary key |
 | `team_id` | `uuid` | No | none | Foreign key to `teams(id)` |
 | `token_type` | `public.team_access_token_type` | No | none | `join_code` or `invite_link` |
+| `granted_membership_role` | `public.team_membership_role` | No | `'member'` | Membership role created when the token is consumed |
 | `token_value` | `text` | No | none | Actual join credential |
 | `created_by_user_id` | `uuid` | No | none | Manager or admin who generated it |
 | `expires_at` | `timestamptz` | Yes | `null` | Optional expiry |
@@ -259,6 +260,11 @@ Stores active join codes and invite-link tokens for self-join onboarding.
 | `is_active` | `boolean` | No | `true` | Current usability flag |
 | `created_at` | `timestamptz` | No | `timezone('utc', now())` | Audit timestamp |
 | `updated_at` | `timestamptz` | No | `timezone('utc', now())` | Audit timestamp |
+
+**Recommended indexes**
+- unique index on `token_value`
+- partial unique index on (`team_id`, `token_type`, `granted_membership_role`) where `is_active = true`
+- composite index on (`team_id`, `token_type`, `granted_membership_role`, `is_active`)
 
 ### `public.tasks`
 

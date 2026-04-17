@@ -38,6 +38,7 @@ const appEnvSchema = z
       .refine((value) => value.startsWith("/"), "API_PREFIX must start with '/'.")
       .default("/api/v1"),
     FRONTEND_APP_ORIGIN: z.string().trim().default("http://localhost:5500"),
+    SUPABASE_AUTH_EMAIL_REDIRECT_TO: z.string().trim().url().optional(),
     SUPABASE_PROJECT_REF: z.string().trim().optional(),
     SUPABASE_URL: z.string().trim().url().optional(),
     SUPABASE_ANON_KEY: z.string().trim().optional(),
@@ -63,6 +64,13 @@ const appEnvSchema = z
         .map((origin) => origin.trim())
         .filter(Boolean)
     ),
+    authEmailRedirectTo:
+      values.SUPABASE_AUTH_EMAIL_REDIRECT_TO
+      ?? values.FRONTEND_APP_ORIGIN.split(",")
+        .map((origin) => origin.trim())
+        .filter(Boolean)
+        .find(Boolean)
+      ?? "http://localhost:5500",
     DATABASE_SSL_REJECT_UNAUTHORIZED: values.DATABASE_SSL_REJECT_UNAUTHORIZED ?? false
   }));
 
