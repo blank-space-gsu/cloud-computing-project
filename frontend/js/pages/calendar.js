@@ -9,7 +9,6 @@ import { closeModal, openModal } from '../components/modal.js';
 import {
   formatDate,
   formatDateTime,
-  formatPercent,
   priorityLabel,
   statusLabel
 } from '../utils/format.js';
@@ -43,10 +42,7 @@ const monthParamFromDate = (value) => {
 };
 
 const monthLabel = (value) =>
-  value.toLocaleDateString('en-US', {
-    month: 'long',
-    year: 'numeric'
-  });
+  value.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
 const startOfCalendarGrid = (value) => {
   const first = new Date(value.getFullYear(), value.getMonth(), 1);
@@ -94,17 +90,19 @@ const buildCalendarDays = (monthDate) => {
   return days;
 };
 
-const taskEventClass = (task) => {
-  if (task.status === 'completed') return 'calendar-event calendar-event--completed';
-  if (task.status === 'blocked') return 'calendar-event calendar-event--blocked';
-  if (task.isOverdue) return 'calendar-event calendar-event--overdue';
-  if (task.priority === 'urgent') return 'calendar-event calendar-event--urgent';
-  if (task.priority === 'high') return 'calendar-event calendar-event--high';
-  return 'calendar-event';
+const taskTone = (task) => {
+  if (task.status === 'completed') return 'done';
+  if (task.status === 'blocked') return 'blocked';
+  if (task.isOverdue) return 'overdue';
+  if (task.priority === 'urgent') return 'urgent';
+  if (task.priority === 'high') return 'high';
+  return 'default';
 };
 
+const MAX_PILLS_PER_DAY = 3;
+
 export default async function calendarPage(container, params = {}) {
-  renderHeader('Calendar', 'See what is due when across your teams.');
+  renderHeader('Calendar', 'Your due-date view');
   clearElement(container);
 
   if (!isEmployee()) {
@@ -178,100 +176,108 @@ export default async function calendarPage(container, params = {}) {
 }
 
 function renderCalendarView({ monthDate, selectedTeamId, teams, tasks }) {
-  const shell = el('div', { className: 'calendar-shell' });
+  const shell = el('div', { className: 'cal' });
   const monthParam = monthParamFromDate(monthDate);
   const selectedTeam = teams.find((team) => team.id === selectedTeamId) || null;
   const tasksByDate = groupTasksByDate(tasks);
   const days = buildCalendarDays(monthDate);
   const todayKey = dateKeyFromDate(new Date());
+  const todayMonthParam = monthParamFromDate(new Date());
+  const isOnCurrentMonth = monthParam === todayMonthParam;
 
-  shell.appendChild(
-    el(
-      'section',
-      { className: 'card calendar-toolbar' },
-      el(
-        'div',
-        { className: 'calendar-toolbar__top' },
-        el(
-          'div',
-          { className: 'calendar-month-nav' },
-          el(
-            'button',
-            {
-              type: 'button',
-              className: 'btn btn-outline btn-sm',
-              onClick: () => {
-                window.location.hash = buildCalendarHash({
-                  month: monthParamFromDate(addMonths(monthDate, -1)),
-                  teamId: selectedTeamId
-                });
-              }
-            },
-            '← Prev'
-          ),
-          el('h2', { className: 'calendar-month-label' }, monthLabel(monthDate)),
-          el(
-            'button',
-            {
-              type: 'button',
-              className: 'btn btn-outline btn-sm',
-              onClick: () => {
-                window.location.hash = buildCalendarHash({
-                  month: monthParamFromDate(addMonths(monthDate, 1)),
-                  teamId: selectedTeamId
-                });
-              }
-            },
-            'Next →'
-          )
-        ),
-        el(
-          'div',
-          { className: 'calendar-team-toggles' },
-          teamToggle({
-            label: 'All Teams',
-            active: !selectedTeamId,
-            onClick: () => {
-              window.location.hash = buildCalendarHash({ month: monthParam });
-            }
-          }),
-          ...teams.map((team) =>
-            teamToggle({
-              label: team.name,
-              active: team.id === selectedTeamId,
-              onClick: () => {
-                window.location.hash = buildCalendarHash({
-                  month: monthParam,
-                  teamId: team.id
-                });
-              }
-            })
-          )
-        )
-      ),
-      el(
-        'p',
-        { className: 'calendar-toolbar__summary' },
-        `${tasks.length} due-dated task${tasks.length === 1 ? '' : 's'} in view${selectedTeam ? ` · ${selectedTeam.name}` : ' · All active teams'}`
-      )
-    )
+  // --- Top: title + compact month nav -----------------------------------
+  const heading = el('div', { className: 'cal-top__heading' },
+    el('h2', { className: 'cal-top__title' }, 'Calendar'),
+    el('p', { className: 'cal-top__sub' }, 'See due work across your teams')
   );
 
+  const prevBtn = el('button', {
+    type: 'button',
+    className: 'cal-nav__btn cal-nav__btn--step',
+    'aria-label': 'Previous month',
+    onClick: () => {
+      window.location.hash = buildCalendarHash({
+        month: monthParamFromDate(addMonths(monthDate, -1)),
+        teamId: selectedTeamId
+      });
+    }
+  }, '\u2039');
+
+  const nextBtn = el('button', {
+    type: 'button',
+    className: 'cal-nav__btn cal-nav__btn--step',
+    'aria-label': 'Next month',
+    onClick: () => {
+      window.location.hash = buildCalendarHash({
+        month: monthParamFromDate(addMonths(monthDate, 1)),
+        teamId: selectedTeamId
+      });
+    }
+  }, '\u203a');
+
+  const todayBtn = el('button', {
+    type: 'button',
+    className: `cal-nav__btn cal-nav__btn--today${isOnCurrentMonth ? ' is-disabled' : ''}`,
+    disabled: isOnCurrentMonth,
+    onClick: () => {
+      if (isOnCurrentMonth) return;
+      window.location.hash = buildCalendarHash({
+        month: todayMonthParam,
+        teamId: selectedTeamId
+      });
+    }
+  }, 'Today');
+
+  const nav = el('div', { className: 'cal-nav' },
+    prevBtn,
+    el('span', { className: 'cal-nav__label' }, monthLabel(monthDate)),
+    nextBtn,
+    todayBtn
+  );
+
+  shell.appendChild(el('section', { className: 'cal-top' }, heading, nav));
+
+  // --- Team chips -------------------------------------------------------
+  const chips = el('div', { className: 'cal-teams' },
+    teamChip({
+      label: 'All',
+      active: !selectedTeamId,
+      onClick: () => {
+        window.location.hash = buildCalendarHash({ month: monthParam });
+      }
+    }),
+    ...teams.map((team) =>
+      teamChip({
+        label: team.name,
+        active: team.id === selectedTeamId,
+        onClick: () => {
+          window.location.hash = buildCalendarHash({
+            month: monthParam,
+            teamId: team.id
+          });
+        }
+      })
+    )
+  );
+  shell.appendChild(chips);
+
+  // --- Quiet meta -------------------------------------------------------
+  const scope = selectedTeam ? selectedTeam.name : 'All teams';
+  shell.appendChild(el('p', { className: 'cal-meta' },
+    `${tasks.length} task${tasks.length === 1 ? '' : 's'} \u00b7 ${scope}`
+  ));
+
   if (!tasks.length) {
-    shell.appendChild(
-      el(
-        'p',
-        { className: 'calendar-empty-note' },
-        'No due-dated tasks fall inside this calendar view.'
-      )
-    );
+    shell.appendChild(el('p', { className: 'cal-empty' },
+      'No due-dated tasks fall inside this month.'
+    ));
   }
 
-  const gridWrap = el('div', { className: 'calendar-grid-wrap' });
-  const grid = el('section', { className: 'calendar-grid' });
+  // --- Month grid -------------------------------------------------------
+  const grid = el('section', { className: 'cal-grid' });
 
   for (const dayName of DAY_NAMES) {
-    grid.appendChild(el('div', { className: 'calendar-weekday' }, dayName));
+    grid.appendChild(el('div', { className: 'cal-weekday' }, dayName));
   }
 
   for (const day of days) {
@@ -279,57 +285,72 @@ function renderCalendarView({ monthDate, selectedTeamId, teams, tasks }) {
     const dayTasks = tasksByDate.get(dayKey) || [];
     const isCurrentMonth = day.getMonth() === monthDate.getMonth();
     const isToday = dayKey === todayKey;
+    const hasTasks = dayTasks.length > 0;
 
-    grid.appendChild(
-      el(
-        'div',
-        {
-          className: `calendar-day${isCurrentMonth ? '' : ' calendar-day--outside'}${isToday ? ' calendar-day--today' : ''}`
-        },
-        el(
-          'div',
-          { className: 'calendar-day__header' },
-          el('span', { className: 'calendar-day__number' }, String(day.getDate()))
-        ),
-        el(
-          'div',
-          { className: 'calendar-day__events' },
-          ...dayTasks.map((task) =>
-            el(
-              'button',
-              {
-                type: 'button',
-                className: taskEventClass(task),
-                onClick: () => openTaskCalendarModal(task)
-              },
-              el('strong', { className: 'calendar-event__title' }, task.title),
-              el(
-                'span',
-                { className: 'calendar-event__meta' },
-                `${task.teamName || 'Team'} · ${statusLabel(task.status)}`
-              )
-            )
-          )
-        )
-      )
+    const cellClasses = [
+      'cal-day',
+      !isCurrentMonth ? 'is-outside' : '',
+      isToday ? 'is-today' : '',
+      hasTasks ? 'has-tasks' : ''
+    ].filter(Boolean).join(' ');
+
+    const header = el('div', { className: 'cal-day__header' },
+      el('span', { className: 'cal-day__num' }, String(day.getDate()))
     );
+    if (hasTasks && isCurrentMonth) {
+      header.appendChild(el('span', { className: 'cal-day__dot', 'aria-hidden': 'true' }));
+    }
+
+    const events = el('div', { className: 'cal-day__events' });
+    if (isCurrentMonth) {
+      const visible = dayTasks.slice(0, MAX_PILLS_PER_DAY);
+      for (const task of visible) {
+        events.appendChild(buildTaskPill(task));
+      }
+      const overflow = dayTasks.length - visible.length;
+      if (overflow > 0) {
+        events.appendChild(el('button', {
+          type: 'button',
+          className: 'cal-more',
+          onClick: () => openDayListModal(day, dayTasks)
+        }, `+${overflow} more`));
+      }
+    }
+
+    grid.appendChild(el('div', { className: cellClasses }, header, events));
   }
 
-  gridWrap.appendChild(grid);
-  shell.appendChild(gridWrap);
+  shell.appendChild(grid);
   return shell;
 }
 
-function teamToggle({ label, active, onClick }) {
-  return el(
-    'button',
-    {
-      type: 'button',
-      className: `calendar-team-toggle${active ? ' is-active' : ''}`,
-      onClick
-    },
-    label
+function teamChip({ label, active, onClick }) {
+  return el('button', {
+    type: 'button',
+    className: `cal-chip${active ? ' is-active' : ''}`,
+    onClick
+  }, label);
+}
+
+function buildTaskPill(task) {
+  const tone = taskTone(task);
+  const teamName = task.teamName || '';
+
+  const pill = el('button', {
+    type: 'button',
+    className: `cal-pill cal-pill--${tone}`,
+    onClick: () => openTaskCalendarModal(task)
+  },
+    el('span', { className: 'cal-pill__rail', 'aria-hidden': 'true' }),
+    el('span', { className: 'cal-pill__body' },
+      el('span', { className: 'cal-pill__title' }, task.title || 'Untitled'),
+      teamName
+        ? el('span', { className: 'cal-pill__team' }, teamName)
+        : null
+    )
   );
+
+  return pill;
 }
 
 function groupTasksByDate(tasks) {
@@ -357,62 +378,77 @@ function groupTasksByDate(tasks) {
   return grouped;
 }
 
-function openTaskCalendarModal(task) {
-  const body = el(
-    'div',
-    { className: 'calendar-task-modal' },
-    el(
-      'div',
-      { className: 'calendar-task-modal__top' },
-      el('h3', { className: 'calendar-task-modal__title' }, task.title),
-      el(
-        'div',
-        { className: 'task-badges' },
-        el('span', { className: 'badge badge-default' }, statusLabel(task.status)),
-        el('span', { className: `badge badge-priority-${task.priority || 'medium'}` }, priorityLabel(task.priority))
-      )
-    ),
-    el(
-      'div',
-      { className: 'calendar-task-modal__meta' },
-      modalStat('Team', task.teamName || '—'),
-      modalStat('Due', formatDateTime(task.dueAt)),
-      modalStat('Progress', formatPercent(task.progressPercent || 0)),
-      modalStat('Assignee', task.assignment?.assigneeFullName || 'You')
-    ),
-    task.description
-      ? el('p', { className: 'calendar-task-modal__text' }, task.description)
-      : null,
-    task.notes
-      ? el('p', { className: 'calendar-task-modal__text calendar-task-modal__text--muted' }, task.notes)
-      : null
-  );
+function openDayListModal(day, tasks) {
+  const list = el('div', { className: 'cal-daylist' });
+  for (const task of tasks) {
+    list.appendChild(buildTaskPill(task));
+  }
 
   openModal(
-    `Due ${formatDate(task.dueAt, { month: 'short', day: 'numeric' })}`,
-    body,
-    el(
-      'div',
-      { className: 'btn-group' },
-      el('button', { className: 'btn btn-outline', onClick: closeModal }, 'Close'),
-      el(
-        'a',
-        {
-          className: 'btn btn-primary',
-          href: '#/tasks',
-          onClick: () => closeModal()
-        },
-        'Open My Tasks'
-      )
+    formatDate(day.toISOString(), { month: 'long', day: 'numeric', year: 'numeric' }),
+    list,
+    el('div', { className: 'btn-group' },
+      el('button', { className: 'btn btn-outline', onClick: closeModal }, 'Close')
     )
   );
 }
 
-function modalStat(label, value) {
-  return el(
-    'div',
-    { className: 'calendar-task-modal__stat' },
-    el('span', { className: 'calendar-task-modal__stat-label' }, label),
-    el('strong', { className: 'calendar-task-modal__stat-value' }, value)
+function openTaskCalendarModal(task) {
+  const tone = taskTone(task);
+  const progressPct = Math.max(0, Math.min(100, Number(task.progressPercent || 0)));
+  const progressTone = progressPct >= 100 ? 'success' : progressPct >= 60 ? 'info' : progressPct > 0 ? 'warning' : 'neutral';
+
+  const chipRow = el('div', { className: 'cal-modal__chips' },
+    el('span', { className: `cal-modal__chip cal-modal__chip--status-${task.status || 'todo'}` }, statusLabel(task.status)),
+    el('span', { className: `cal-modal__chip cal-modal__chip--priority-${task.priority || 'medium'}` }, priorityLabel(task.priority))
+  );
+  if (task.teamName) {
+    chipRow.appendChild(el('span', { className: 'cal-modal__chip cal-modal__chip--team' }, task.teamName));
+  }
+
+  const dueLine = el('div', { className: `cal-modal__due cal-modal__due--${tone}` },
+    el('span', { className: 'cal-modal__due-label' }, 'Due'),
+    el('span', { className: 'cal-modal__due-value' }, formatDateTime(task.dueAt))
+  );
+
+  const progress = el('div', { className: 'cal-modal__progress' },
+    el('div', { className: 'cal-modal__progress-head' },
+      el('span', { className: 'cal-modal__progress-label' }, 'Progress'),
+      el('span', { className: 'cal-modal__progress-pct' }, `${progressPct}%`)
+    ),
+    el('div', { className: 'cal-modal__progress-bar' },
+      el('span', { className: `cal-modal__progress-fill cal-modal__progress-fill--${progressTone}`, style: `width: ${progressPct}%;` })
+    )
+  );
+
+  const body = el('div', { className: 'cal-modal' },
+    chipRow,
+    dueLine,
+    progress
+  );
+
+  if (task.description && task.description.trim()) {
+    body.appendChild(el('p', { className: 'cal-modal__text' }, task.description.trim()));
+  }
+  if (task.notes && task.notes.trim()) {
+    body.appendChild(el('p', { className: 'cal-modal__note' }, task.notes.trim()));
+  }
+
+  const assignee = task.assignment?.assigneeFullName;
+  if (assignee) {
+    body.appendChild(el('p', { className: 'cal-modal__assignee' }, `Assigned to ${assignee}`));
+  }
+
+  openModal(
+    task.title || 'Task',
+    body,
+    el('div', { className: 'btn-group' },
+      el('button', { className: 'btn btn-outline', onClick: closeModal }, 'Close'),
+      el('a', {
+        className: 'btn btn-primary',
+        href: '#/tasks',
+        onClick: () => closeModal()
+      }, 'Open My Tasks')
+    )
   );
 }

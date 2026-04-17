@@ -28,10 +28,7 @@ export default async function teamsPage(container, params) {
 }
 
 async function renderTeamList(container) {
-  renderHeader(
-    'Teams',
-    isManager() ? 'Review rosters, leaders, and membership across your teams.' : 'Your teams and teammates'
-  );
+  renderHeader('Teams', isManager() ? 'Rosters and membership' : 'Your teams and teammates');
   clearElement(container);
   showLoading(container);
 
@@ -43,26 +40,37 @@ async function renderTeamList(container) {
     const teams = getWorkspaceTeams(baseTeams, getUser());
     const preferredTeam = selectPreferredTeam(teams);
     if (!teams.length) {
-      const empty = emptyState(
-        'No teams yet',
-        isEmployee()
-          ? 'Use a join code or invite link to join your first team.'
-          : 'You are not part of any teams yet.'
+      const shellEmpty = el('div', { className: 'mteams' });
+      shellEmpty.appendChild(el('section', { className: 'mteams-top' },
+        el('div', { className: 'mteams-top__heading' },
+          el('h2', { className: 'mteams-top__title' }, 'Your teams'),
+          el('p', { className: 'mteams-top__sub' },
+            isEmployee() ? 'No team memberships yet.' : 'You are not part of any teams yet.'
+          )
+        )
+      ));
+
+      const emptyPanel = el('div', { className: 'mteams-empty' },
+        el('h4', {}, 'No teams yet'),
+        el('p', {},
+          isEmployee()
+            ? 'Use a join code or invite link to join your first team.'
+            : 'You are not part of any teams yet.'
+        )
       );
 
       if (isEmployee()) {
-        empty.appendChild(
-          el('div', { className: 'btn-group', style: 'margin-top:16px;justify-content:center;' },
-            el('button', {
-              className: 'btn btn-primary',
-              type: 'button',
-              onClick: () => { window.location.hash = '#/join'; }
-            }, 'Join a Team')
-          )
-        );
+        emptyPanel.appendChild(el('div', { className: 'mteams-empty__action' },
+          el('button', {
+            className: 'mteams-btn mteams-btn--primary',
+            type: 'button',
+            onClick: () => { window.location.hash = '#/join'; }
+          }, 'Join a Team')
+        ));
       }
 
-      container.appendChild(empty);
+      shellEmpty.appendChild(emptyPanel);
+      container.appendChild(shellEmpty);
       return;
     }
 
@@ -73,69 +81,64 @@ async function renderTeamList(container) {
 
     const totalPeople = teams.reduce((sum, team) => sum + Number(team.memberCount || 0), 0);
 
-    const overview = el('section', { className: 'page-hero page-hero--compact' },
-      el('div', { className: 'page-hero__content' },
-        el('p', { className: 'page-hero__eyebrow' }, isManager() ? 'Managed teams' : 'Team overview'),
-        el('h2', { className: 'page-hero__title' }, 'Your teams'),
-        el('p', { className: 'page-hero__description' },
-          isManager()
-            ? 'Choose a team to review the roster, identify leaders, and manage membership.'
-            : preferredTeam?.description || 'Open a team to inspect the roster and review the current team structure.'
-        )
-      ),
-      el('div', { className: 'page-hero__meta' },
-        heroPill(`Visible teams · ${formatNumber(teams.length)}`),
-        heroPill(`People in view · ${formatNumber(totalPeople)}`)
+    const shell = el('div', { className: 'mteams' });
+
+    const heading = el('div', { className: 'mteams-top__heading' },
+      el('h2', { className: 'mteams-top__title' }, isManager() ? 'Your teams' : 'Your teams'),
+      el('p', { className: 'mteams-top__sub' },
+        `${formatNumber(teams.length)} team${teams.length === 1 ? '' : 's'} \u00b7 ${formatNumber(totalPeople)} ${totalPeople === 1 ? 'person' : 'people'} in view`
       )
     );
 
-    const actions = isManager()
-      ? el('div', { className: 'btn-group', style: 'margin-bottom:16px' },
-          el('button', {
-            className: 'btn btn-primary',
-            type: 'button',
-            onClick: async () => {
-              const bundles = await loadTeamBundles(baseTeams);
-              openTeamEditorModal({
-                mode: 'create',
-                availablePeople: buildAssignablePeople(bundles, getUser()),
-                onSave: async ({ name, description, members }) => {
-                  const created = await createPersistedTeam({
-                    name,
-                    description,
-                    members
-                  });
-                  showSuccess('New team created successfully.');
-                  window.location.hash = `#/teams/${created.id}`;
-                }
-              });
+    const actionCluster = el('div', { className: 'mteams-top__actions' });
+    if (isManager()) {
+      actionCluster.appendChild(el('button', {
+        className: 'mteams-btn mteams-btn--primary',
+        type: 'button',
+        onClick: async () => {
+          const bundles = await loadTeamBundles(baseTeams);
+          openTeamEditorModal({
+            mode: 'create',
+            availablePeople: buildAssignablePeople(bundles, getUser()),
+            onSave: async ({ name, description, members }) => {
+              const created = await createPersistedTeam({ name, description, members });
+              showSuccess('New team created successfully.');
+              window.location.hash = `#/teams/${created.id}`;
             }
-          }, '+ New Team')
-        )
-      : null;
+          });
+        }
+      }, '+ New Team'));
+    }
 
-    const grid = el('div', { className: 'team-grid' },
-      ...teams.map((team) => el('div', {
-        className: `team-card${preferredTeam?.id === team.id ? ' team-card--highlight' : ''}`,
+    shell.appendChild(el('section', { className: 'mteams-top' }, heading, actionCluster));
+
+    const grid = el('div', { className: 'mteams-grid' },
+      ...teams.map((team) => el('article', {
+        className: `mteams-team${preferredTeam?.id === team.id ? ' is-primary' : ''}`,
         onClick: () => { window.location.hash = `#/teams/${team.id}`; }
       },
-        el('div', { className: 'team-card__top' },
-          el('h3', {}, team.name),
-          el('div', { className: 'task-badges' },
-            team.isLocalTeam ? el('span', { className: 'badge badge-info' }, 'Custom') : null
-          )
+        el('div', { className: 'mteams-team__head' },
+          el('h3', { className: 'mteams-team__name' }, team.name),
+          team.isLocalTeam
+            ? el('span', { className: 'mteams-chip mteams-chip--custom' }, 'Custom')
+            : null
         ),
-        el('p', {}, team.description || 'No description'),
-        el('div', { className: 'team-stats' },
-          el('span', {}, `👥 ${team.memberCount ?? 0} members`),
-          el('span', {}, `👔 ${team.managerCount ?? 0} managers`)
+        el('p', { className: 'mteams-team__desc' }, team.description || 'No description'),
+        el('div', { className: 'mteams-team__stats' },
+          el('span', { className: 'mteams-team__stat' },
+            el('span', { className: 'mteams-team__stat-num' }, String(team.memberCount ?? 0)),
+            el('span', { className: 'mteams-team__stat-label' }, (team.memberCount ?? 0) === 1 ? 'member' : 'members')
+          ),
+          el('span', { className: 'mteams-team__stat' },
+            el('span', { className: 'mteams-team__stat-num' }, String(team.managerCount ?? 0)),
+            el('span', { className: 'mteams-team__stat-label' }, (team.managerCount ?? 0) === 1 ? 'manager' : 'managers')
+          )
         )
       ))
     );
 
-    container.append(overview);
-    if (actions) container.append(actions);
-    container.append(grid);
+    shell.appendChild(grid);
+    container.appendChild(shell);
   } catch (err) {
     showError(err);
     hideLoading(container);
@@ -143,7 +146,7 @@ async function renderTeamList(container) {
 }
 
 async function renderTeamDetail(container, teamId, { showBackButton = true } = {}) {
-  renderHeader('Team', 'Loading roster and membership');
+  renderHeader('Team', 'Roster and membership');
   clearElement(container);
   showLoading(container);
 
@@ -192,151 +195,183 @@ async function renderTeamDetail(container, teamId, { showBackButton = true } = {
     const currentMemberIds = new Set(members.map((member) => member.id));
     const assignablePeople = availablePeople.filter((person) => !currentMemberIds.has(person.id));
 
-    renderHeader(
-      team.name || 'Team',
-      isManager() ? 'Review roster, leaders, and membership.' : 'Your team roster'
-    );
+    renderHeader(team.name || 'Team', isManager() ? 'Roster and membership' : 'Your team roster');
 
-    const actionItems = [];
-    if (showBackButton) {
-      actionItems.push(
-        el('button', { className: 'btn btn-outline', type: 'button', onClick: () => { window.location.hash = '#/teams'; } }, '← Back to Teams')
-      );
-    }
-    if (isEmployee() && !team.isLocalTeam && currentMember?.membershipRole !== 'manager') {
-      actionItems.push(
-        el('button', {
-          className: 'btn btn-outline',
-          type: 'button',
-          onClick: () => leavePersistedTeam({ team, member: currentMember })
-        }, 'Leave Team')
-      );
-    }
-    if (isManager() && team.canManageTeam) {
-      actionItems.push(
-        el('button', {
-          className: 'btn btn-outline',
-          type: 'button',
-          onClick: () => openTeamEditorModal({
-            mode: 'edit',
-            team,
-            availablePeople,
-            onSave: async ({ name, description }) => {
-              await updatePersistedTeam(team.id, { name, description });
-              showSuccess('Team details updated successfully.');
-              await renderTeamDetail(container, team.id, { showBackButton });
-            }
-          })
-        }, 'Edit Team'),
-        el('button', {
-          className: 'btn btn-primary',
-          type: 'button',
-          onClick: () => openAssignPeopleModal({
-            team,
-            availablePeople: assignablePeople,
-            onSave: async (selectedMembers) => {
-              await addPersistedTeamMembers(team.id, selectedMembers);
-              showSuccess('People assigned to the team successfully.');
-              await renderTeamDetail(container, team.id, { showBackButton });
-            }
-          })
-        }, 'Assign People')
-      );
-    }
+    const shell = el('div', { className: 'mteams mteams--detail' });
 
-    const actions = actionItems.length ? el('div', { className: 'btn-group' }, ...actionItems) : null;
-
-    const hero = el('section', { className: 'page-hero page-hero--compact' },
-      el('div', { className: 'page-hero__content' },
-        el('p', { className: 'page-hero__eyebrow' }, team.canManageTeam ? 'Managed team' : 'Team roster'),
-        el('h2', { className: 'page-hero__title' }, team.name || 'Team'),
-        el('p', { className: 'page-hero__description' },
-          team.description || (team.canManageTeam
-            ? 'Review leaders, employees, and membership for this team.'
-            : 'Review the roster and supervisors for this team.')
-        )
-      ),
-      el('div', { className: 'page-hero__meta' },
-        heroPill(`Members · ${formatNumber(team.memberCount || members.length)}`),
-        heroPill(`Managers · ${formatNumber(team.managerCount || leaders.length)}`),
-        heroPill(`Employees · ${formatNumber(employees.length)}`),
-        team.isLocalTeam ? heroPill('Custom team') : null
+    // --- Detail top (back + title + meta + actions) --------------------
+    const topHeading = el('div', { className: 'mteams-top__heading' },
+      el('h2', { className: 'mteams-top__title' }, team.name || 'Team'),
+      el('p', { className: 'mteams-top__sub' },
+        `${formatNumber(team.memberCount || members.length)} members \u00b7 ${formatNumber(team.managerCount || leaders.length)} manager${(team.managerCount || leaders.length) === 1 ? '' : 's'}${team.isLocalTeam ? ' \u00b7 Custom team' : ''}`
       )
     );
 
-    const joinAccessSection = joinAccess
-      ? sectionCard(
-          'Join access',
-          'Share a code or invite link so employees can join this team themselves.',
-          buildJoinAccessCard({
-            team,
-            joinAccess,
-            onRegenerate: async () => {
-              const confirmed = window.confirm(`Regenerate join access for ${team.name}? Existing links and codes will stop working.`);
-              if (!confirmed) {
-                return;
-              }
+    const topActions = el('div', { className: 'mteams-top__actions' });
+    if (showBackButton) {
+      topActions.appendChild(el('button', {
+        className: 'mteams-btn mteams-btn--ghost',
+        type: 'button',
+        onClick: () => { window.location.hash = '#/teams'; }
+      }, '\u2039 Teams'));
+    }
+    if (isEmployee() && !team.isLocalTeam && currentMember?.membershipRole !== 'manager') {
+      topActions.appendChild(el('button', {
+        className: 'mteams-btn mteams-btn--ghost',
+        type: 'button',
+        onClick: () => leavePersistedTeam({ team, member: currentMember })
+      }, 'Leave team'));
+    }
+    if (isManager() && team.canManageTeam) {
+      topActions.appendChild(el('button', {
+        className: 'mteams-btn mteams-btn--ghost',
+        type: 'button',
+        onClick: () => openTeamEditorModal({
+          mode: 'edit',
+          team,
+          availablePeople,
+          onSave: async ({ name, description }) => {
+            await updatePersistedTeam(team.id, { name, description });
+            showSuccess('Team details updated successfully.');
+            await renderTeamDetail(container, team.id, { showBackButton });
+          }
+        })
+      }, 'Edit team'));
+      topActions.appendChild(el('button', {
+        className: 'mteams-btn mteams-btn--primary',
+        type: 'button',
+        onClick: () => openAssignPeopleModal({
+          team,
+          availablePeople: assignablePeople,
+          onSave: async (selectedMembers) => {
+            await addPersistedTeamMembers(team.id, selectedMembers);
+            showSuccess('People assigned to the team successfully.');
+            await renderTeamDetail(container, team.id, { showBackButton });
+          }
+        })
+      }, '+ Assign people'));
+    }
 
-              try {
-                await api.post(`/teams/${team.id}/join-access/regenerate`);
-                showSuccess('Join access regenerated successfully.');
-                await renderTeamDetail(container, team.id, { showBackButton });
-              } catch (error) {
-                showError(error);
-              }
+    shell.appendChild(el('section', { className: 'mteams-top' }, topHeading, topActions));
+
+    if (team.description) {
+      shell.appendChild(el('p', { className: 'mteams-desc' }, team.description));
+    }
+
+    // --- Join access section ------------------------------------------
+    if (joinAccess) {
+      shell.appendChild(buildMteamsSection('Join access', 'Share a code or link so employees can join directly.',
+        buildJoinAccessCard({
+          team,
+          joinAccess,
+          onRegenerate: async () => {
+            const confirmed = window.confirm(`Regenerate join access for ${team.name}? Existing links and codes will stop working.`);
+            if (!confirmed) return;
+            try {
+              await api.post(`/teams/${team.id}/join-access/regenerate`);
+              showSuccess('Join access regenerated successfully.');
+              await renderTeamDetail(container, team.id, { showBackButton });
+            } catch (error) {
+              showError(error);
             }
+          }
+        })
+      ));
+    }
+
+    // --- Leadership ----------------------------------------------------
+    shell.appendChild(buildMteamsSection(
+      'Leadership',
+      `${leaders.length} manager${leaders.length === 1 ? '' : 's'}`,
+      leaders.length
+        ? buildMemberList(leaders, { team, onClickMember: (member) => openMemberDetailModal({ team, member }) })
+        : buildMteamsEmpty('No managers listed', 'No manager roster was returned for this team.')
+    ));
+
+    // --- Employees -----------------------------------------------------
+    shell.appendChild(buildMteamsSection(
+      'Employees',
+      `${employees.length} ${employees.length === 1 ? 'person' : 'people'}`,
+      employees.length
+        ? buildMemberList(employees, {
+            team,
+            onClickMember: (member) => openMemberDetailModal({ team, member }),
+            getAction: (member) => (team.canManageTeam && !team.isLocalTeam)
+              ? {
+                  label: 'Remove',
+                  tone: 'danger',
+                  onClick: () => removePersistedTeamMember({ container, team, member, showBackButton })
+                }
+              : null
           })
-        )
-      : null;
+        : buildMteamsEmpty('No employees listed', 'No employee roster was returned for this team.')
+    ));
 
-    const layout = el('div', { className: 'dashboard-layout', style: 'margin-top:20px' },
-        sectionCard(
-          'Leadership',
-          'Managers are listed first so everyone can quickly identify team leads.',
-          leaders.length
-            ? el('div', { className: 'member-grid profile-member-grid' },
-                ...leaders.map((member) => personCard(member, () => openMemberDetailModal({ team, member })))
-              )
-            : emptyState('No managers found', 'No manager roster was returned for this team.')
-        ),
-        sectionCard(
-          'Employees',
-          isManager()
-            ? 'Open a person to review role, contact details, and active work.'
-            : 'Your teammate roster for this team.',
-          employees.length
-            ? el('div', { className: 'member-grid profile-member-grid' },
-                ...employees.map((member) => personCard(
-                  member,
-                  () => openMemberDetailModal({ team, member }),
-                  {
-                    action: team.canManageTeam && !team.isLocalTeam
-                      ? {
-                          label: 'Remove',
-                          className: 'btn btn-sm btn-danger',
-                          onClick: () => removePersistedTeamMember({
-                            container,
-                            team,
-                            member,
-                            showBackButton
-                          })
-                        }
-                      : null
-                  }
-                ))
-              )
-            : emptyState('No employees found', 'No employee roster was returned for this team.')
-        ),
-      );
-
-    container.append(hero);
-    if (actions) container.append(actions);
-    if (joinAccessSection) container.append(joinAccessSection);
-    container.append(layout);
+    container.appendChild(shell);
   } catch (err) {
     showError(err);
     hideLoading(container);
   }
+}
+
+function buildMteamsSection(title, meta, body) {
+  const header = el('header', { className: 'mteams-section__header' },
+    el('h3', { className: 'mteams-section__title' }, title)
+  );
+  if (meta) {
+    header.appendChild(el('span', { className: 'mteams-section__meta' }, meta));
+  }
+  return el('section', { className: 'mteams-section' }, header, body);
+}
+
+function buildMteamsEmpty(title, subtitle) {
+  return el('div', { className: 'mteams-empty' },
+    el('h4', {}, title),
+    el('p', {}, subtitle)
+  );
+}
+
+function buildMemberList(people, { team, onClickMember, getAction } = {}) {
+  const list = el('div', { className: 'mteams-member-list' });
+  for (const member of people) {
+    const row = el('article', {
+      className: 'mteams-member',
+      onClick: () => onClickMember?.(member)
+    });
+    row.appendChild(el('span', { className: 'mteams-member__avatar', 'aria-hidden': 'true' }, initials(member.fullName)));
+
+    const body = el('div', { className: 'mteams-member__body' },
+      el('span', { className: 'mteams-member__name' }, member.fullName || `${member.firstName} ${member.lastName}`),
+      el('span', { className: 'mteams-member__title' }, member.jobTitle || 'Team member')
+    );
+    row.appendChild(body);
+
+    const chips = el('div', { className: 'mteams-member__chips' });
+    const isManagerRow = member.membershipRole === 'manager';
+    chips.appendChild(el('span', {
+      className: `mteams-chip${isManagerRow ? ' mteams-chip--manager' : ''}`
+    }, capitalize(member.membershipRole || member.appRole)));
+    row.appendChild(chips);
+
+    const action = typeof getAction === 'function' ? getAction(member) : null;
+    if (action) {
+      const btn = el('button', {
+        className: `mteams-btn mteams-btn--icon${action.tone === 'danger' ? ' mteams-btn--danger' : ''}`,
+        type: 'button',
+        title: action.label,
+        'aria-label': action.label,
+        onClick: (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          action.onClick(member);
+        }
+      }, '\u00d7');
+      row.appendChild(btn);
+    }
+
+    list.appendChild(row);
+  }
+  return list;
 }
 
 async function loadTeamBundles(baseTeams) {

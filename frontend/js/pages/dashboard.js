@@ -4,16 +4,31 @@ import * as api from '../api.js';
 import { renderHeader } from '../components/header.js';
 import { showLoading, hideLoading } from '../components/loading.js';
 import { emptyState } from '../components/emptyState.js';
-import { showError, showSuccess } from '../components/toast.js';
+import { showError } from '../components/toast.js';
 import {
   capitalize,
   formatNumber,
   formatPercent,
   formatShortDate,
-  statusLabel,
   formatTimeRemaining
 } from '../utils/format.js';
 import { getVisibleTeams, selectPreferredTeam } from '../utils/teams.js';
+
+/* ============================================================
+ * Manager Dashboard — calm, attention-first landing page.
+ *
+ *   Greeting band
+ *   Attention strip        (Overdue · Blocked · Unassigned · Completion)
+ *   Attention queue        (urgent tasks + worker follow-up items)
+ *   Team health            (lightweight rows, leads into Worker Tracker)
+ *   Quiet next-step links
+ *
+ * Backend contract unchanged: still calls
+ *   GET /teams
+ *   GET /dashboards/manager?teamId=
+ *   GET /tasks?teamId=...&sortBy=urgency&...
+ *   GET /teams/{id}/members
+ * ========================================================== */
 
 export default async function dashboardPage(container) {
   if (isEmployee()) {
@@ -22,18 +37,23 @@ export default async function dashboardPage(container) {
   }
 
   const user = getUser();
-  renderHeader('Dashboard', `Welcome back, ${user.firstName}`);
+  renderHeader('Dashboard', 'Your manager overview');
   clearElement(container);
   showLoading(container);
 
   try {
-    await renderManagerDashboard(container);
+    await renderManagerDashboard(container, user);
   } catch (err) {
     if (!isDashboardViewActive()) return;
     showError(err);
     hideLoading(container);
     clearElement(container);
-    container.appendChild(emptyState('Unable to load dashboard', err.message || 'The dashboard could not be rendered right now.'));
+    container.appendChild(
+      emptyState(
+        'Unable to load dashboard',
+        err?.message || 'The dashboard could not be rendered right now.'
+      )
+    );
   }
 }
 
@@ -41,43 +61,30 @@ function isDashboardViewActive() {
   return (window.location.hash || '#/dashboard').startsWith('#/dashboard');
 }
 
-async function renderManagerDashboard(container) {
+async function renderManagerDashboard(container, user) {
   const teamResponse = await api.get('/teams');
   if (!isDashboardViewActive()) return;
-  const teams = getVisibleTeams((teamResponse.data.teams || []).filter((team) => team.canManageTeam));
+
+  const teams = getVisibleTeams(
+    (teamResponse.data.teams || []).filter((team) => team.canManageTeam)
+  );
 
   clearElement(container);
 
   if (!teams.length) {
-    container.appendChild(emptyState('No manageable teams', 'This manager account does not currently have a team to manage.'));
+    container.appendChild(
+      emptyState(
+        'No manageable teams',
+        'This manager account does not currently have a team to manage.'
+      )
+    );
     return;
   }
 
   let selectedTeamId = selectPreferredTeam(teams)?.id || teams[0].id;
-  const shell = el('div');
-  const content = el('div');
 
-  if (teams.length > 1) {
-    const controlBar = el('div', { className: 'filters-bar filters-bar--hero' });
-    const teamSelect = el('select', { className: 'form-select' },
-      ...teams.map((team) => el('option', { value: team.id }, team.name))
-    );
-    teamSelect.value = selectedTeamId;
-    teamSelect.addEventListener('change', async () => {
-      selectedTeamId = teamSelect.value;
-      await loadManagerData(selectedTeamId);
-    });
-
-    controlBar.appendChild(
-      el('div', { className: 'filter-group' },
-        el('label', {}, 'Team dashboard'),
-        teamSelect
-      )
-    );
-
-    shell.appendChild(controlBar);
-  }
-
+  const shell = el('div', { className: 'dash-page' });
+  const content = el('div', { className: 'dash-content' });
   shell.appendChild(content);
   container.appendChild(shell);
 
@@ -88,7 +95,9 @@ async function renderManagerDashboard(container) {
     try {
       const [dashboardRes, tasksRes, teamMembersRes] = await Promise.all([
         api.get(`/dashboards/manager?teamId=${teamId}`),
-        api.get(`/tasks?teamId=${teamId}&sortBy=urgency&sortOrder=asc&includeCompleted=false&page=1&limit=8`),
+        api.get(
+          `/tasks?teamId=${teamId}&sortBy=urgency&sortOrder=asc&includeCompleted=false&page=1&limit=8`
+        ),
         api.get(`/teams/${teamId}/members`)
       ]);
 
@@ -97,391 +106,498 @@ async function renderManagerDashboard(container) {
 
       const dashboard = dashboardRes.data;
       const tasks = tasksRes.data.tasks || [];
-      const teamInfo = teamMembersRes.data.team || teams.find((team) => team.id === teamId);
+      const teamInfo = teamMembersRes.data.team || teams.find((t) => t.id === teamId);
       const mergedMembers = mergeMemberMetrics(
         teamMembersRes.data.members || [],
         dashboard.charts?.workloadByEmployee || []
       );
-      const employeeRows = mergedMembers.filter((member) => member.appRole === 'employee');
+      const employeeRows = mergedMembers.filter((m) => m.appRole === 'employee');
       const summary = dashboard.summary || {};
-      const attentionTasks = buildManagerAttentionTasks(tasks, dashboard.tasks?.upcomingDeadlines || []);
-      const blockedCount = tasks.filter((t) => t.status === 'blocked').length;
+      const blockedTaskCount = tasks.filter((t) => t.status === 'blocked').length;
 
-      const header = el('header', { className: 'mgr-header' },
-        el('div', { className: 'mgr-header__text' },
-          el('h2', { className: 'mgr-header__title' }, teamInfo?.name || 'Team dashboard'),
-          el('p', { className: 'mgr-header__desc' }, teamInfo?.description || 'See who needs help, what is overdue, and where to act next.')
-        ),
-        el('div', { className: 'btn-group' },
-          dashboardActionButton('Open Tasks', '#/tasks', 'btn btn-primary btn-sm'),
-          dashboardActionButton('Open Team', `#/teams/${teamId}`, 'btn btn-outline btn-sm')
-        )
+      const attentionItems = computeAttentionItems({
+        tasks,
+        upcomingDeadlines: dashboard.tasks?.upcomingDeadlines || [],
+        members: employeeRows,
+        teamId
+      });
+
+      const strip = buildAttentionStrip({
+        overdue: summary.overdueTaskCount || 0,
+        blocked: blockedTaskCount,
+        unassigned: summary.unassignedTaskCount || 0,
+        completion: summary.completionRate || 0
+      });
+
+      content.appendChild(
+        buildGreetingBand({
+          user,
+          teams,
+          selectedTeamId: teamId,
+          onTeamChange: async (id) => {
+            selectedTeamId = id;
+            await loadManagerData(id);
+          },
+          pendingCount: attentionItems.length
+        })
       );
-
-      const statStrip = el('div', { className: 'mgr-stat-strip' },
-        mgrStatCell('Overdue', summary.overdueTaskCount || 0, (summary.overdueTaskCount || 0) > 0 ? 'danger' : null),
-        mgrStatCell('Blocked', blockedCount, blockedCount > 0 ? 'warning' : null),
-        mgrStatCell('Unassigned', summary.unassignedTaskCount || 0, (summary.unassignedTaskCount || 0) > 0 ? 'info' : null),
-        mgrStatCell('Completion', formatPercent(summary.completionRate || 0, 0), null)
-      );
-
-      const watchMembers = [...employeeRows].sort(compareMemberAttention).slice(0, 4);
-
-      const attentionSection = el('section', { className: 'dashboard-section card' },
-        el('div', { className: 'section-header section-header--stacked' },
-          el('div', {},
-            el('h3', { className: 'section-title' }, 'Needs attention'),
-            el('p', { className: 'section-subtitle' }, 'Overdue, blocked, due-soon, and unassigned work sorted by urgency.')
-          )
-        ),
-        attentionTasks.length
-          ? el('div', { className: 'mgr-attention-list' }, ...attentionTasks.slice(0, 5).map(mgrAttentionRow))
-          : emptyState('Nothing urgent', 'No overdue or priority items need follow-up right now.'),
-        el('div', { className: 'mgr-section-footer' },
-          dashboardActionButton('Review all tasks', '#/tasks', 'btn btn-outline btn-sm')
-        )
-      );
-
-      const peopleSection = el('section', { className: 'dashboard-section card' },
-        el('div', { className: 'section-header section-header--stacked' },
-          el('div', {},
-            el('h3', { className: 'section-title' }, 'People check-in'),
-            el('p', { className: 'section-subtitle' }, 'Who may need help, reassignment, or a quick follow-up.')
-          )
-        ),
-        watchMembers.length
-          ? el('div', { className: 'mgr-people-list' }, ...watchMembers.map(mgrPeopleRow))
-          : emptyState('No team members', 'Add employees to this team to see workload guidance.'),
-        el('div', { className: 'mgr-section-footer' },
-          dashboardActionButton('Open team', `#/teams/${teamId}`, 'btn btn-outline btn-sm')
-        )
-      );
-
-      const layout = el('div', { className: 'mgr-flow' },
-        attentionSection,
-        peopleSection
-      );
-
-      if (!isDashboardViewActive()) return;
-      content.append(header, statStrip, layout);
+      content.appendChild(strip);
+      content.appendChild(buildAttentionQueue(attentionItems, teamId));
+      content.appendChild(buildTeamHealth(teams, summary, teamId));
+      content.appendChild(buildQuietActions(teamId));
+      void teamInfo; // kept for potential future use; intentionally not rendered
     } catch (err) {
       if (!isDashboardViewActive()) return;
       showError(err);
       hideLoading(content);
       clearElement(content);
-      content.appendChild(emptyState('Unable to load team dashboard', err.message || 'This dashboard could not be loaded right now.'));
+      content.appendChild(
+        emptyState(
+          'Unable to load team dashboard',
+          err?.message || 'This dashboard could not be loaded right now.'
+        )
+      );
     }
   }
 
   await loadManagerData(selectedTeamId);
 }
 
-function buildHero({ eyebrow, title, description, meta = [], actions = [], className = 'page-hero' }) {
-  return el('section', { className },
-    el('div', { className: 'page-hero__content' },
-      el('p', { className: 'page-hero__eyebrow' }, eyebrow),
-      el('h2', { className: 'page-hero__title' }, title),
-      el('p', { className: 'page-hero__description' }, description)
-    ),
-    el('div', { className: 'page-hero__meta' },
-      ...meta,
-      actions.length
-        ? el('div', { className: 'page-hero__actions' }, ...actions)
-        : null
-    )
-  );
-}
+/* ---------- Greeting band ---------- */
 
-function pill(text) {
-  return el('span', { className: 'hero-pill' }, text);
-}
+function buildGreetingBand({ user, teams, selectedTeamId, onTeamChange, pendingCount }) {
+  const band = el('header', { className: 'dash-greet' });
 
-function metricGrid(items) {
-  return el('div', { className: 'card-grid card-grid--dashboard' }, ...items);
-}
+  const left = el('div', { className: 'dash-greet__left' });
+  left.appendChild(el('span', { className: 'dash-greet__eyebrow' }, currentDateLabel()));
 
-function metricCard(label, value, note, tone) {
-  return el('div', { className: `card dashboard-stat-card${tone ? ` dashboard-stat-card--${tone}` : ''}` },
-    el('div', { className: 'card-title' }, label),
-    el('div', { className: 'card-value' }, value),
-    el('div', { className: 'card-footer' }, note)
-  );
-}
+  const line = el('h2', { className: 'dash-greet__line' });
+  line.appendChild(document.createTextNode(`${timeOfDayGreeting()}, `));
+  line.appendChild(el('span', { className: 'dash-greet__name' }, user?.firstName || 'there'));
+  line.appendChild(document.createTextNode('.'));
+  left.appendChild(line);
 
-function summaryTableCard(title, rows) {
-  return el('section', { className: 'card dashboard-summary-table-card' },
-    el('div', { className: 'section-header section-header--stacked' },
-      el('div', {},
-        el('h3', { className: 'section-title' }, title),
-        el('p', { className: 'section-subtitle' }, 'The most important metrics for this workspace in one compact view.')
-      )
-    ),
-    el('div', { className: 'table-wrapper table-wrapper--compact' },
-      el('table', { className: 'dashboard-summary-table' },
-        el('tbody', {},
-          ...rows.map((row) => el('tr', {},
-            el('th', { scope: 'row', className: 'dashboard-summary-table__metric' },
-              el('div', { className: 'dashboard-summary-table__label' }, row.label),
-              el('span', { className: 'dashboard-summary-table__note' }, row.note)
-            ),
-            el('td', { className: 'dashboard-summary-table__value' }, row.value)
-          ))
-        )
-      )
-    )
-  );
-}
-
-function buildTaskAccordionList(tasks, { showAssignee = false, showDueHint = false, onComplete } = {}) {
-  return el('div', { className: 'task-accordion-list' },
-    ...tasks.map((task) => taskAccordionItem(task, { showAssignee, showDueHint, onComplete }))
-  );
-}
-
-function taskAccordionItem(task, { showAssignee = false, showDueHint = false, onComplete } = {}) {
-  const progressValue = Number(task.progressPercent ?? 0);
-
-  return el('details', { className: 'task-accordion card' },
-    el('summary', { className: 'task-accordion__summary' },
-      el('div', { className: 'task-accordion__head' },
-        el('strong', { className: 'task-accordion__title' }, task.title),
-        el('div', { className: 'task-badges' },
-          el('span', { className: `badge badge-${task.status === 'completed' ? 'success' : task.status === 'blocked' ? 'warning' : task.status === 'in_progress' ? 'primary' : 'default'}` }, statusLabel(task.status)),
-          el('span', { className: `badge badge-priority-${task.priority || 'medium'}` }, capitalize(task.priority || 'medium'))
-        )
-      ),
-      el('div', { className: 'task-accordion__summary-meta' },
-        showAssignee ? el('span', {}, task.assignment?.assigneeFullName || 'Unassigned') : null,
-        showDueHint ? el('span', {
-          className: `task-accordion__due${task.isOverdue ? ' task-accordion__due--danger' : task.isDueSoon ? ' task-accordion__due--warning' : ''}`
-        }, task.dueAt ? `${formatShortDate(task.dueAt)} · ${formatTimeRemaining(task.timeRemainingSeconds)}` : 'No due date') : null,
-        el('span', { className: 'task-accordion__icon', 'aria-hidden': 'true' })
-      )
-    ),
-    el('div', { className: 'task-accordion__body' },
-      task.description ? el('p', { className: 'task-note' }, task.description) : null,
-      el('div', { className: 'task-inline-metrics', style: 'margin-top:12px' },
-        infoChip('Due', task.dueAt ? formatShortDate(task.dueAt) : 'Not scheduled'),
-        infoChip('Time left', task.timeRemainingSeconds != null ? formatTimeRemaining(task.timeRemainingSeconds) : 'No deadline'),
-        infoChip('Progress', formatPercent(progressValue, 0))
-      ),
-      el('div', { className: 'task-progress-block' },
-        el('div', { className: 'task-progress-row' },
-          el('span', { className: 'task-progress-title' }, 'Progress'),
-          el('span', { className: 'task-progress-value' }, formatPercent(progressValue, 0))
-        ),
-        el('div', { className: 'progress-bar-container progress-bar-container--lg' },
-          el('div', { className: 'progress-bar', style: `width:${Math.max(0, Math.min(progressValue, 100))}%` })
-        )
-      ),
-      task.status !== 'completed' && onComplete
-        ? el('div', { className: 'task-actions' },
-            el('button', {
-              className: 'btn btn-sm btn-primary',
-              type: 'button',
-              onClick: () => onComplete(task)
-            }, 'Mark Completed')
-          )
-        : null
-    )
-  );
-}
-
-function infoChip(label, value) {
-  return el('div', { className: 'task-inline-chip' },
-    el('span', { className: 'task-inline-chip__label' }, label),
-    el('strong', { className: 'task-inline-chip__value' }, value)
-  );
-}
-
-async function quickCompleteTask(task, reload) {
-  try {
-    await api.patch(`/tasks/${task.id}`, {
-      status: 'completed',
-      progressPercent: 100
-    });
-    showSuccess('Task marked completed.');
-    await reload();
-  } catch (err) {
-    showError(err);
-  }
-}
-
-function chartCard(title, canvasId, subtitle) {
-  return el('div', { className: 'chart-card chart-card--enhanced' },
-    el('div', { className: 'chart-card__top' },
-      el('h3', {}, title),
-      subtitle ? el('p', {}, subtitle) : null
-    ),
-    el('div', { className: 'chart-container' }, el('canvas', { id: canvasId }))
-  );
-}
-
-function stackedSection(title, subtitle, body) {
-  return el('section', { className: 'dashboard-section card' },
-    el('div', { className: 'section-header section-header--stacked' },
-      el('div', {},
-        el('h3', { className: 'section-title' }, title),
-        subtitle ? el('p', { className: 'section-subtitle' }, subtitle) : null
-      )
-    ),
-    body
-  );
-}
-
-function dashboardActionButton(label, hash, className = 'btn btn-outline btn-sm') {
-  return el('button', {
-    className,
-    type: 'button',
-    onClick: () => {
-      window.location.hash = hash;
+  if (teams.length > 1) {
+    const row = el('div', { className: 'dash-greet__teamline' });
+    row.appendChild(el('span', { className: 'dash-greet__teamline-label' }, 'Viewing'));
+    const sel = el('select', { className: 'dash-inline-select', 'aria-label': 'Team' });
+    for (const t of teams) {
+      sel.appendChild(el('option', { value: t.id, selected: t.id === selectedTeamId }, t.name));
     }
-  }, label);
-}
-
-function buildManagerAttentionTasks(priorityTasks = [], deadlineTasks = []) {
-  const seen = new Set();
-
-  return [...priorityTasks, ...deadlineTasks]
-    .filter((task) => task && task.id && task.status !== 'completed' && task.status !== 'cancelled')
-    .sort((left, right) => compareAttentionTasks(left, right))
-    .filter((task) => {
-      if (seen.has(task.id)) return false;
-      seen.add(task.id);
-      return true;
-    })
-    .slice(0, 6);
-}
-
-function compareAttentionTasks(left, right) {
-  const scoreDiff = attentionTaskScore(right) - attentionTaskScore(left);
-  if (scoreDiff !== 0) return scoreDiff;
-
-  const leftDue = left.dueAt ? new Date(left.dueAt).getTime() : Number.POSITIVE_INFINITY;
-  const rightDue = right.dueAt ? new Date(right.dueAt).getTime() : Number.POSITIVE_INFINITY;
-
-  return leftDue - rightDue;
-}
-
-function attentionTaskScore(task) {
-  const priorityWeight = {
-    urgent: 40,
-    high: 28,
-    medium: 16,
-    low: 8
-  };
-
-  let score = priorityWeight[task.priority] || 0;
-  if (task.isOverdue) score += 120;
-  else if (task.isDueSoon) score += 72;
-  if (!task.assignment?.assigneeFullName) score += 40;
-  if (task.status === 'blocked') score += 52;
-
-  return score;
-}
-
-function compareMemberAttention(left, right) {
-  const blockedDiff = Number(right.blockedTaskCount || 0) - Number(left.blockedTaskCount || 0);
-  if (blockedDiff !== 0) return blockedDiff;
-
-  const openDiff = Number(right.openTaskCount || 0) - Number(left.openTaskCount || 0);
-  if (openDiff !== 0) return openDiff;
-
-  return Number(left.completionRate || 0) - Number(right.completionRate || 0);
-}
-
-function workloadSignal(member) {
-  const blocked = Number(member.blockedTaskCount || 0);
-  const open = Number(member.openTaskCount || 0);
-  const completion = Number(member.completionRate || 0);
-
-  if (blocked > 0) {
-    return {
-      label: 'Blocked work',
-      tone: 'warning',
-      note: `${formatNumber(blocked)} blocked ${blocked === 1 ? 'task needs' : 'tasks need'} help right now.`
-    };
+    sel.addEventListener('change', () => onTeamChange(sel.value));
+    row.appendChild(sel);
+    left.appendChild(row);
+  } else {
+    const team = teams[0];
+    if (team?.name) {
+      const row = el('div', { className: 'dash-greet__teamline' });
+      row.appendChild(el('span', { className: 'dash-greet__teamline-label' }, 'Viewing'));
+      row.appendChild(el('span', { className: 'dash-greet__teamline-value' }, team.name));
+      left.appendChild(row);
+    }
   }
 
-  if (open >= 5) {
-    return {
-      label: 'High load',
-      tone: 'danger',
-      note: `${formatNumber(open)} open tasks suggest this teammate may need reassignment support.`
-    };
-  }
+  band.appendChild(left);
 
-  if (open >= 3) {
-    return {
-      label: 'Busy',
-      tone: 'primary',
-      note: `${formatNumber(open)} open tasks are in motion, so keep an eye on new assignments.`
-    };
-  }
+  const right = el('div', { className: 'dash-greet__right' });
+  const count = Number(pendingCount) || 0;
+  right.appendChild(
+    el(
+      'div',
+      { className: `dash-greet__callout${count > 0 ? ' is-active' : ''}` },
+      el('span', { className: 'dash-greet__callout-num' }, String(count)),
+      el(
+        'span',
+        { className: 'dash-greet__callout-text' },
+        count === 0
+          ? 'Nothing urgent. Take the lead.'
+          : `${count === 1 ? 'item needs' : 'items need'} you today`
+      )
+    )
+  );
+  band.appendChild(right);
 
-  if ((member.taskCount || 0) > 0 && completion < 0.5) {
-    return {
-      label: 'Needs follow-up',
-      tone: 'info',
-      note: `Completion pace is ${formatPercent(completion, 1)}, which may need a quick manager check-in.`
-    };
-  }
-
-  return {
-    label: 'On track',
-    tone: 'success',
-    note: 'Current workload looks manageable at a glance.'
-  };
+  return band;
 }
 
-function mgrStatCell(label, value, tone) {
-  return el('div', { className: `mgr-stat-strip__cell${tone ? ` mgr-stat-strip__cell--${tone}` : ''}` },
-    el('span', { className: 'mgr-stat-strip__label' }, label),
-    el('strong', { className: 'mgr-stat-strip__value' }, String(value))
+/* ---------- Attention strip ---------- */
+
+function buildAttentionStrip({ overdue, blocked, unassigned, completion }) {
+  const wrap = el('div', { className: 'dash-strip', role: 'group', 'aria-label': 'Team health' });
+  wrap.appendChild(buildIndicator({
+    label: 'Overdue',
+    value: overdue,
+    tone: overdue > 0 ? 'danger' : 'calm',
+    sub: overdue > 0 ? 'Needs triage' : 'None today'
+  }));
+  wrap.appendChild(buildIndicator({
+    label: 'Blocked',
+    value: blocked,
+    tone: blocked > 0 ? 'warning' : 'calm',
+    sub: blocked > 0 ? 'Awaiting unblock' : 'Flowing'
+  }));
+  wrap.appendChild(buildIndicator({
+    label: 'Unassigned',
+    value: unassigned,
+    tone: unassigned > 0 ? 'info' : 'calm',
+    sub: unassigned > 0 ? 'Needs owners' : 'All owned'
+  }));
+  const pct = Number(completion || 0);
+  wrap.appendChild(buildIndicator({
+    label: 'Completion',
+    value: formatPercent(pct, 0),
+    tone: pct >= 80 ? 'good' : pct >= 50 ? 'calm' : 'warning',
+    sub: pct >= 80 ? 'On pace' : pct >= 50 ? 'Steady' : 'Behind'
+  }));
+  return wrap;
+}
+
+function buildIndicator({ label, value, tone, sub }) {
+  return el(
+    'div',
+    { className: `dash-ind dash-ind--${tone}` },
+    el(
+      'div',
+      { className: 'dash-ind__head' },
+      el('span', { className: 'dash-ind__dot', 'aria-hidden': 'true' }),
+      el('span', { className: 'dash-ind__label' }, label)
+    ),
+    el('div', { className: 'dash-ind__value' }, String(value)),
+    el('div', { className: 'dash-ind__sub' }, sub)
   );
 }
 
-function attentionSignal(task) {
+/* ---------- Attention queue ---------- */
+
+function buildAttentionQueue(items, teamId) {
+  const section = el('section', { className: 'dash-queue' });
+  section.appendChild(
+    el(
+      'div',
+      { className: 'dash-sec__head' },
+      el('h3', { className: 'dash-sec__title' }, 'Attention queue'),
+      el(
+        'span',
+        { className: `dash-sec__count${items.length ? ' is-active' : ''}` },
+        String(items.length)
+      ),
+      el(
+        'span',
+        { className: 'dash-sec__hint' },
+        items.length
+          ? 'Highest-priority things to look at right now.'
+          : 'Nothing is on fire. Use this time to plan.'
+      )
+    )
+  );
+
+  if (!items.length) {
+    section.appendChild(
+      el('div', { className: 'dash-queue__empty' }, 'You are clear. No overdue, blocked, or unassigned items.')
+    );
+    return section;
+  }
+
+  const list = el('ol', { className: 'dash-queue__list' });
+  items.slice(0, 7).forEach((item, idx) => list.appendChild(buildQueueRow(item, idx + 1, teamId)));
+  section.appendChild(list);
+
+  if (items.length > 7) {
+    section.appendChild(
+      el(
+        'a',
+        { className: 'dash-queue__more', href: '#/tasks' },
+        `View ${items.length - 7} more in Tasks →`
+      )
+    );
+  }
+  return section;
+}
+
+function buildQueueRow(item, rank, teamId) {
+  const row = el('li', { className: `dash-qrow dash-qrow--${item.reason.tone}` });
+
+  row.appendChild(el('span', { className: 'dash-qrow__rank' }, String(rank).padStart(2, '0')));
+  row.appendChild(
+    el('span', { className: `dash-qrow__rail dash-qrow__rail--${item.reason.tone}`, 'aria-hidden': 'true' })
+  );
+
+  const main = el('div', { className: 'dash-qrow__main' });
+  main.appendChild(
+    el(
+      'div',
+      { className: 'dash-qrow__line1' },
+      el('span', { className: `dash-qrow__reason dash-qrow__reason--${item.reason.tone}` }, item.reason.label),
+      el('span', { className: 'dash-qrow__title' }, item.title)
+    )
+  );
+  main.appendChild(
+    el('div', { className: 'dash-qrow__line2' }, buildMetaLine(item.meta))
+  );
+  row.appendChild(main);
+
+  const href = item.href || (item.kind === 'member' ? `#/worker-tracker?teamId=${teamId}&memberUserId=${item.memberUserId}` : '#/tasks');
+  row.appendChild(
+    el(
+      'a',
+      { className: 'dash-qrow__go', href, 'aria-label': 'Open' },
+      el('span', { className: 'dash-qrow__go-label' }, item.kind === 'member' ? 'Open in Tracker' : 'Open'),
+      el('span', { className: 'dash-qrow__chev', 'aria-hidden': 'true' }, '→')
+    )
+  );
+
+  return row;
+}
+
+function buildMetaLine(parts) {
+  const frag = document.createDocumentFragment();
+  parts.filter(Boolean).forEach((p, i) => {
+    if (i > 0) frag.appendChild(el('span', { className: 'dash-sep', 'aria-hidden': 'true' }, '·'));
+    if (p.tone) {
+      frag.appendChild(el('span', { className: `dash-meta dash-meta--${p.tone}` }, p.text));
+    } else {
+      frag.appendChild(el('span', { className: 'dash-meta' }, p.text));
+    }
+  });
+  return frag;
+}
+
+/* ---------- Team health ---------- */
+
+function buildTeamHealth(teams, summary, selectedTeamId) {
+  const section = el('section', { className: 'dash-teams' });
+  section.appendChild(
+    el(
+      'div',
+      { className: 'dash-sec__head' },
+      el('h3', { className: 'dash-sec__title' }, 'Team health'),
+      el('span', { className: 'dash-sec__hint' }, 'Where to go next.')
+    )
+  );
+
+  if (!teams.length) {
+    section.appendChild(el('div', { className: 'dash-teams__empty' }, 'No teams to show.'));
+    return section;
+  }
+
+  const list = el('div', { className: 'dash-teams__list' });
+  for (const team of teams) {
+    // Only the selected team has loaded metrics (cheap: single payload). Others
+    // show a quiet placeholder row — keeps backend contract unchanged.
+    const metrics = team.id === selectedTeamId ? summary : null;
+    list.appendChild(buildTeamHealthRow(team, metrics));
+  }
+  section.appendChild(list);
+  return section;
+}
+
+function buildTeamHealthRow(team, summary) {
+  const tone = deriveTeamHealthTone(summary);
+  const row = el('a', {
+    className: `dash-trow dash-trow--${tone}`,
+    href: `#/worker-tracker?teamId=${team.id}`,
+    'aria-label': `Open ${team.name} in Worker Tracker`
+  });
+
+  row.appendChild(el('span', { className: `dash-trow__dot dash-trow__dot--${tone}`, 'aria-hidden': 'true' }));
+  row.appendChild(
+    el(
+      'div',
+      { className: 'dash-trow__identity' },
+      el('span', { className: 'dash-trow__name' }, team.name),
+      el(
+        'span',
+        { className: 'dash-trow__sub' },
+        team.memberCount != null
+          ? `${team.memberCount} member${team.memberCount === 1 ? '' : 's'}`
+          : 'Team'
+      )
+    )
+  );
+
+  const metrics = el('div', { className: 'dash-trow__metrics' });
+  if (summary) {
+    metrics.appendChild(tinyMetric('Open', summary.openTaskCount));
+    metrics.appendChild(tinyMetric('Overdue', summary.overdueTaskCount, summary.overdueTaskCount > 0 ? 'danger' : null));
+    metrics.appendChild(tinyMetric('Blocked', summary.blockedTaskCount, summary.blockedTaskCount > 0 ? 'warning' : null));
+  } else {
+    metrics.appendChild(el('span', { className: 'dash-trow__hint' }, 'Open in Tracker to load'));
+  }
+  row.appendChild(metrics);
+
+  if (summary) {
+    const pct = Number(summary.completionRate || 0);
+    row.appendChild(
+      el(
+        'div',
+        { className: 'dash-trow__completion' },
+        el('span', { className: 'dash-trow__bar' }, el('span', {
+          className: `dash-trow__barfill dash-trow__barfill--${tone}`,
+          style: `width:${Math.max(0, Math.min(100, pct))}%`
+        })),
+        el('span', { className: 'dash-trow__pct' }, formatPercent(pct, 0))
+      )
+    );
+  } else {
+    row.appendChild(el('span', { className: 'dash-trow__completion dash-trow__completion--muted' }, '—'));
+  }
+
+  row.appendChild(el('span', { className: 'dash-trow__go', 'aria-hidden': 'true' }, 'Open in Tracker →'));
+  return row;
+}
+
+function tinyMetric(label, value, tone) {
+  const v = Number(value || 0);
+  return el(
+    'span',
+    { className: `dash-tm${tone ? ` dash-tm--${tone}` : ''}` },
+    el('span', { className: 'dash-tm__label' }, label),
+    el('span', { className: 'dash-tm__value' }, String(v))
+  );
+}
+
+function deriveTeamHealthTone(summary) {
+  if (!summary) return 'neutral';
+  const overdue = Number(summary.overdueTaskCount || 0);
+  const blocked = Number(summary.blockedTaskCount || 0);
+  const unassigned = Number(summary.unassignedTaskCount || 0);
+  const pct = Number(summary.completionRate || 0);
+  if (overdue > 0 || blocked >= 3) return 'danger';
+  if (blocked > 0 || unassigned > 0) return 'warning';
+  if (pct >= 80) return 'good';
+  return 'calm';
+}
+
+/* ---------- Quiet next-step actions ---------- */
+
+function buildQuietActions(teamId) {
+  const row = el('nav', { className: 'dash-nav', 'aria-label': 'Navigate' });
+  row.appendChild(el('span', { className: 'dash-nav__label' }, 'Go to'));
+  row.appendChild(el('a', { className: 'dash-nav__link', href: `#/worker-tracker?teamId=${teamId}` }, 'Worker Tracker'));
+  row.appendChild(el('span', { className: 'dash-nav__sep', 'aria-hidden': 'true' }, '·'));
+  row.appendChild(el('a', { className: 'dash-nav__link', href: '#/tasks' }, 'Tasks'));
+  row.appendChild(el('span', { className: 'dash-nav__sep', 'aria-hidden': 'true' }, '·'));
+  row.appendChild(el('a', { className: 'dash-nav__link', href: '#/teams' }, 'Teams'));
+  return row;
+}
+
+/* ---------- Attention queue: data shaping ----------
+ * Produce the mixed attention queue (tasks + worker follow-up) sorted by urgency.
+ * Uses ONLY data already returned by the existing endpoints.
+ */
+function computeAttentionItems({ tasks, upcomingDeadlines, members, teamId }) {
+  const seen = new Set();
+  const items = [];
+
+  const pushTask = (task) => {
+    if (!task?.id || task.status === 'completed' || task.status === 'cancelled') return;
+    const key = `task:${task.id}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    const reason = taskReason(task);
+    if (!reason) return;
+    items.push({
+      kind: 'task',
+      id: task.id,
+      title: task.title,
+      reason,
+      href: '#/tasks',
+      meta: taskMeta(task),
+      score: taskScore(task)
+    });
+  };
+
+  for (const t of tasks || []) pushTask(t);
+  for (const t of upcomingDeadlines || []) pushTask(t);
+
+  for (const m of members || []) {
+    const signal = memberSignal(m);
+    if (!signal) continue;
+    items.push({
+      kind: 'member',
+      id: m.id || m.userId,
+      memberUserId: m.id || m.userId,
+      title: m.fullName || 'Unnamed employee',
+      reason: { label: 'Worker follow-up', tone: signal.tone },
+      href: `#/worker-tracker?teamId=${teamId}&memberUserId=${m.id || m.userId}`,
+      meta: [
+        { text: m.jobTitle || 'Team member' },
+        { text: signal.label, tone: signal.tone },
+        { text: `${formatNumber(m.openTaskCount || 0)} open` }
+      ],
+      score: signal.score
+    });
+  }
+
+  return items.sort((a, b) => b.score - a.score);
+}
+
+function taskReason(task) {
   if (task.isOverdue) return { label: 'Overdue', tone: 'danger' };
   if (task.status === 'blocked') return { label: 'Blocked', tone: 'warning' };
-  if (task.isDueSoon) return { label: 'Due soon', tone: 'warning' };
   if (!task.assignment?.assigneeFullName) return { label: 'Unassigned', tone: 'info' };
-  return { label: capitalize(task.priority || 'medium'), tone: 'default' };
+  if (task.isDueSoon) return { label: 'Due soon', tone: 'warning' };
+  if (task.priority === 'urgent') return { label: 'Urgent', tone: 'danger' };
+  return null;
 }
 
-function mgrAttentionRow(task) {
-  const signal = attentionSignal(task);
-  return el('div', { className: 'mgr-attention-row' },
-    el('div', { className: 'mgr-attention-row__main' },
-      el('strong', { className: 'mgr-attention-row__title' }, task.title),
-      el('span', { className: 'mgr-attention-row__assignee' }, task.assignment?.assigneeFullName || 'Unassigned')
-    ),
-    el('div', { className: 'mgr-attention-row__meta' },
-      el('span', { className: `badge badge-${signal.tone}` }, signal.label),
-      el('span', { className: 'mgr-attention-row__due' }, task.dueAt ? formatShortDate(task.dueAt) : 'No due date')
-    )
-  );
+function taskMeta(task) {
+  const dueText = task.dueAt
+    ? `${formatShortDate(task.dueAt)}${task.timeRemainingSeconds != null ? ` · ${formatTimeRemaining(task.timeRemainingSeconds)}` : ''}`
+    : 'No due date';
+  return [
+    { text: task.assignment?.assigneeFullName || 'Unassigned' },
+    { text: dueText, tone: task.isOverdue ? 'danger' : null },
+    { text: capitalize(task.priority || 'medium') }
+  ];
 }
 
-function mgrPeopleRow(member) {
-  const signal = workloadSignal(member);
-  return el('div', { className: 'mgr-people-row' },
-    el('div', { className: 'mgr-people-row__main' },
-      el('strong', {}, member.fullName),
-      el('span', {}, member.jobTitle || 'Team member')
-    ),
-    el('div', { className: 'mgr-people-row__meta' },
-      el('span', { className: `badge badge-${signal.tone}` }, signal.label),
-      el('span', {}, `${formatNumber(member.openTaskCount || 0)} open`)
-    )
-  );
+function taskScore(task) {
+  const pri = { urgent: 40, high: 28, medium: 16, low: 8 }[task.priority] || 0;
+  let s = pri;
+  if (task.isOverdue) s += 120;
+  else if (task.isDueSoon) s += 72;
+  if (task.status === 'blocked') s += 52;
+  if (!task.assignment?.assigneeFullName) s += 40;
+  return s;
+}
+
+function memberSignal(m) {
+  const blocked = Number(m.blockedTaskCount || 0);
+  const open = Number(m.openTaskCount || 0);
+  const completion = Number(m.completionRate || 0);
+  const total = Number(m.taskCount || 0);
+
+  if (blocked > 0) return { label: 'Blocked work', tone: 'danger', score: 60 + blocked };
+  if (open >= 5) return { label: 'High load', tone: 'warning', score: 45 + Math.min(open, 20) };
+  if (total > 0 && completion < 0.5) return { label: 'Needs follow-up', tone: 'info', score: 30 };
+  return null; // on track → keep off the queue
+}
+
+/* ---------- Misc helpers ---------- */
+
+function currentDateLabel() {
+  try {
+    return new Date().toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric'
+    });
+  } catch (_) {
+    return '';
+  }
+}
+
+function timeOfDayGreeting() {
+  const h = new Date().getHours();
+  if (h < 5) return 'Still up';
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  if (h < 21) return 'Good evening';
+  return 'Working late';
 }
 
 function mergeMemberMetrics(members, breakdown) {
-  const breakdownByUserId = new Map(breakdown.map((member) => [member.userId, member]));
-
-  return members.map((member) => ({
-    ...member,
-    ...(breakdownByUserId.get(member.id) || {})
-  }));
+  const byId = new Map((breakdown || []).map((m) => [m.userId, m]));
+  return (members || []).map((m) => ({ ...m, ...(byId.get(m.id) || {}) }));
 }
