@@ -86,9 +86,8 @@ async function renderManagerDashboard(container) {
     showLoading(content);
 
     try {
-      const [dashboardRes, productivityRes, tasksRes, teamMembersRes] = await Promise.all([
+      const [dashboardRes, tasksRes, teamMembersRes] = await Promise.all([
         api.get(`/dashboards/manager?teamId=${teamId}`),
-        api.get(`/productivity-metrics?scope=team&teamId=${teamId}`),
         api.get(`/tasks?teamId=${teamId}&sortBy=urgency&sortOrder=asc&includeCompleted=false&page=1&limit=8`),
         api.get(`/teams/${teamId}/members`)
       ]);
@@ -97,10 +96,12 @@ async function renderManagerDashboard(container) {
       clearElement(content);
 
       const dashboard = dashboardRes.data;
-      const productivity = productivityRes.data;
       const tasks = tasksRes.data.tasks || [];
       const teamInfo = teamMembersRes.data.team || teams.find((team) => team.id === teamId);
-      const mergedMembers = mergeMemberMetrics(teamMembersRes.data.members || [], productivity.breakdown?.members || []);
+      const mergedMembers = mergeMemberMetrics(
+        teamMembersRes.data.members || [],
+        dashboard.charts?.workloadByEmployee || []
+      );
       const employeeRows = mergedMembers.filter((member) => member.appRole === 'employee');
       const summary = dashboard.summary || {};
       const attentionTasks = buildManagerAttentionTasks(tasks, dashboard.tasks?.upcomingDeadlines || []);

@@ -14,16 +14,16 @@ Managers need a simple way to assign work, monitor deadlines, and understand whe
 - `manager`: assigns tasks, monitors team workload, and reviews completion progress
 - `admin`: optional support role for future operational controls
 
-## MVP Scope
+## Current Product Scope
 
-The first implementation focuses on the smallest useful product:
+The live product now focuses on the strongest version of the app:
 
-- manager-to-employee task assignment
-- employee task visibility
-- task status updates
-- due dates, priorities, and weekly organization
-- manager dashboard summaries for workload and completion
-- team-based access boundaries
+- managers use a lightweight Dashboard to find work that needs attention
+- managers use Worker Tracker to drill from team -> employee -> task
+- managers create and manage teams, join access, and task assignment
+- employees join teams, work from My Tasks, and mark progress or completion
+- employees use Calendar to see due-dated assigned work across active teams
+- team-based access boundaries remain the source of truth
 
 ## Optional Next Enhancements
 
@@ -45,42 +45,24 @@ The planned roadmap is now complete. If the team wants to extend the project aft
 
 ## Current Delivery Status
 
-As of April 9, 2026, the backend has completed Phase 0, Phase 1, Phase 2, Phase 3, Phase 4, Phase 5, Phase 6, Phase 7, Phase 8, Phase 9, and the frontend support extension pass:
+As of April 17, 2026, the backend supports the focused product spine:
 
-- backend project structure created in `/backend`
-- Express application bootstrapped
-- health endpoint implemented with database readiness reporting
-- standard API response helpers added
-- centralized error handling added
-- environment parsing and validation added
-- database connection utilities added
-- MVP schema documented and generated as SQL DDL
-- Phase 1 migration pushed to the linked Supabase project `cloud_computing`
-- backend-managed auth endpoints implemented
-- RBAC middleware implemented for role checks
-- auth profile sync migration pushed to Supabase
-- demo manager and employee accounts seeded for manual verification
-- authenticated user profile endpoint implemented
-- team list, team detail, and team member roster endpoints implemented
-- service-layer team scope rules implemented for employees, managers, and admins
-- task list, task detail, task create, task update, and task delete endpoints implemented
-- manager task assignment endpoint implemented with active-assignment history
-- employee task status, progress, and notes updates restricted through service-layer RBAC
-- employee dashboard summary endpoint implemented
-- manager dashboard summary endpoint implemented with workload and deadline aggregation
-- hours logging endpoints implemented with weekly and monthly totals
-- productivity metrics endpoint implemented with weekly, monthly, and yearly rollups
-- employee, manager-team, and manager-selected-user productivity views implemented
-- goals and sales quota tracking endpoints implemented with computed progress percentages
-- user-scoped and team-scoped goals are enforced through manager-controlled write flows
-- reusable smoke-test script implemented for local and deployed verification
-- Render Blueprint configuration added for monorepo deployment
-- deployment and testing documentation published for final handoff
-- self-profile editing implemented for safe profile-only fields
-- people-directory and manager/admin employee creation APIs implemented
-- persisted team creation, editing, and membership management implemented
-- backend-backed in-app notifications implemented for list, read, and dismiss flows
-- roadmap, architecture, schema, and environment docs published
+- backend-managed auth and RBAC
+- durable team memberships with leave/rejoin history
+- join codes and invite links through team join access
+- employee self-join and self-leave flows
+- scoped team list, team detail, and active roster endpoints
+- task CRUD, assignment, and reassignment
+- employee progress, notes, and completion updates
+- task update history in `task_updates`
+- manager dashboard attention summary
+- Worker Tracker manager drilldown
+- employee calendar support through due-dated assigned tasks
+- recurring task rules that generate real task instances
+- backend-backed in-app notifications
+- reusable smoke/audit tooling plus deployment docs
+
+Legacy backend surfaces for hours logging, productivity metrics, and goals still exist for compatibility, but they are no longer part of the promoted live product experience.
 
 ## Success Criteria
 
@@ -91,3 +73,4 @@ This backend is successful if it is:
 - incremental enough for a student team to build confidently
 - documented well enough that new teammates can onboard quickly
 - deployable and smoke-checkable with a student-friendly workflow
+- focused enough that task assignment, membership, completion, and due-date visibility stay at the center of the product

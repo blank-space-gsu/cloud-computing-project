@@ -4,23 +4,25 @@
 
 This frontend is a plain HTML, CSS, and JavaScript single-page app for the Cloud-Based Workforce Task Management System. It uses hash-based routing and connects to the backend API under `/api/v1`.
 
-The current UI is presentation-ready for the class demo and uses the validated backend API for authentication, dashboards, tasks, teams, goals, profile saving, and notifications. Backend logic remains isolated in `/backend`.
+The live UI is now a focused team task-flow product. It uses the validated backend API for authentication, team join access, tasks, Worker Tracker, calendar, profile saving, and notifications. Backend logic remains isolated in `/backend`.
 
 ## What Was Built
 
 - Public landing page before login
 - Role-based sign-in flow
 - Shared app shell with sidebar, header, modals, toasts, loading states, and empty states
-- Manager dashboard with summary cards, charts, task board, deadlines, and team snapshots
-- Employee dashboard with personal work, progress, and trend views
-- Tasks page with manager and employee task workflows
-- Goals page with target summaries and progress tracking
-- Productivity page with charts and performance summaries
-- Teams and people directory views
-- Manager and employee profile pages
+- Manager Dashboard, Worker Tracker, Tasks, Teams, and Profile
+- Employee Join Team, Tasks, Calendar, Teams, and Profile
+- Team join access management for managers
 - Backend-backed self-profile editing on the profile page
 - Backend-backed notification list, read, and dismiss actions
 - Responsive TaskFlow styling across the app
+
+Retired from the live app flow:
+
+- Goals page
+- Productivity page
+- Employee dashboard route
 
 ## Frontend Structure
 
@@ -43,11 +45,12 @@ frontend/
 
 - `#/` public landing page
 - `#/login` sign-in screen
-- `#/dashboard`
+- `#/dashboard` manager attention view
+- `#/worker-tracker` manager drilldown view
 - `#/tasks`
-- `#/productivity`
-- `#/goals`
+- `#/calendar` employee-only
 - `#/teams`
+- `#/join` employee onboarding / join access
 - `#/profile`
 
 ## Local Run
@@ -79,13 +82,13 @@ Use the password stored in `backend/.env` as `DEMO_USER_PASSWORD`.
 
 ## Important Frontend Notes
 
-- Manager flows default to the strongest seeded team experience after sign-in.
-- The landing page does not reveal seeded database content before authentication.
+- Managers land on the attention-first dashboard and then move naturally into Worker Tracker, Tasks, or Teams.
+- Employees land on Join Team if they have no active memberships, otherwise on Tasks.
 - Self-profile edits save through `PATCH /api/v1/users/me` for `firstName`, `lastName`, `jobTitle`, `dateOfBirth`, and `address`.
-- Manager team creation, team editing, and team membership add/remove actions are backed by the real API.
-- Notifications load from the backend and support read/dismiss actions. The frontend keeps a safe local fallback only if the notification API is unavailable.
+- Manager team creation, team editing, team membership add/remove, join-access regeneration, and recurring-task creation are backed by the real API.
+- Notifications load from the backend and support read/dismiss actions.
 - Profile photo management and employee creation remain placeholder UI actions in the current frontend. Backend support exists for URL-based avatar updates and employee creation, but those specific controls are not wired yet; binary profile-photo upload is not implemented.
-- Supervisor or team contact details use backend data where available and frontend-safe fallbacks where needed for demo presentation.
+- Legacy backend endpoints for goals, productivity, and hours still exist, but they are no longer part of the live frontend product path.
 
 ## Backend Endpoints Used
 
@@ -100,18 +103,19 @@ Use the password stored in `backend/.env` as `DEMO_USER_PASSWORD`.
 - `GET /api/v1/teams/:teamId/members`
 - `POST /api/v1/teams/:teamId/members`
 - `DELETE /api/v1/teams/:teamId/members/:userId`
+- `GET /api/v1/teams/:teamId/join-access`
+- `POST /api/v1/teams/:teamId/join-access/regenerate`
+- `POST /api/v1/team-join`
+- `POST /api/v1/teams/:teamId/members/me/leave`
 - `GET /api/v1/tasks`
 - `POST /api/v1/tasks`
 - `GET /api/v1/tasks/:taskId`
 - `PATCH /api/v1/tasks/:taskId`
 - `DELETE /api/v1/tasks/:taskId`
 - `POST /api/v1/task-assignments`
-- `GET /api/v1/dashboards/employee`
 - `GET /api/v1/dashboards/manager`
-- `GET /api/v1/productivity-metrics`
-- `GET /api/v1/goals`
-- `POST /api/v1/goals`
-- `PATCH /api/v1/goals/:goalId`
+- `GET /api/v1/worker-tracker`
+- `POST /api/v1/recurring-task-rules`
 - `GET /api/v1/notifications`
 - `PATCH /api/v1/notifications/:notificationId/read`
 - `DELETE /api/v1/notifications/:notificationId`

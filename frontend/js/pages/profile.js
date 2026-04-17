@@ -29,11 +29,15 @@ export default async function profilePage(container, params = {}) {
 
   try {
     const teamsResponse = await api.get('/teams');
+    if (!isProfileViewActive() || !getUser()) return;
     const teams = sortTeamsForDemo(getVisibleTeams(teamsResponse.data.teams || []));
     const preferredTeam = selectPreferredTeam(teams);
 
     const teamBundles = await Promise.all(
       teams.map(async (team) => {
+        if (!isProfileViewActive() || !getUser()) {
+          return { team, members: [] };
+        }
         try {
           const { data } = await api.get(`/teams/${team.id}/members`);
           return { team, members: data.members || [] };
@@ -42,6 +46,7 @@ export default async function profilePage(container, params = {}) {
         }
       })
     );
+    if (!isProfileViewActive() || !getUser()) return;
 
     clearElement(container);
     const profile = renderProfile({
@@ -63,6 +68,10 @@ export default async function profilePage(container, params = {}) {
     showError(err);
     hideLoading(container);
   }
+}
+
+function isProfileViewActive() {
+  return (window.location.hash || '#/profile').startsWith('#/profile');
 }
 
 function renderProfile({ user, preferredTeam, teamBundles, onProfileUpdated }) {

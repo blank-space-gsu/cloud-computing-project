@@ -2,6 +2,9 @@
 
 Last updated: April 9, 2026
 
+> Note:
+> This board preserves the original backend delivery history. The current live product has been narrowed to the focused task-flow spine; hours logging, productivity metrics, and goals remain historical/frozen backend surfaces rather than promoted user-facing product areas.
+
 ## Phase Board
 
 | Phase | Status | Verification | Frontend impact | Notes |

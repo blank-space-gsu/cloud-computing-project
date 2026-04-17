@@ -6,12 +6,23 @@ University cloud computing project for a workforce task management web applicati
 
 The application helps managers assign and monitor work while giving employees a clear view of what they need to complete. The backend is implemented as a modular REST API, and the frontend is a plain HTML, CSS, and JavaScript single-page app that consumes those endpoints without a framework dependency.
 
-### MVP
+### Current Product Spine
 
-- Managers can assign tasks to employees.
-- Managers can view employee workload and completion progress.
-- Employees can view their assigned tasks and update task status.
-- Teams, due dates, priorities, and weekly task organization are supported.
+Manager experience:
+
+- Dashboard as a lightweight attention surface
+- Worker Tracker as the main drilldown surface
+- Tasks for direct task creation, assignment, and editing
+- Teams for team management and join access
+- Profile for lightweight account and notification context
+
+Employee experience:
+
+- Join Team onboarding
+- My Tasks for assigned work, progress, and completion
+- Calendar for due-date visibility across active teams
+- Teams for membership visibility and leave flow
+- Profile for lightweight account and notification context
 
 ### Optional Next Enhancements
 
@@ -36,11 +47,10 @@ Current frontend experience:
 
 - Public landing page before sign-in
 - Role-based login flow for manager and employee accounts
-- Manager dashboard with task, hour, goal, and productivity summaries
-- Employee dashboard with personal tasks, hour logging, goals, and performance views
-- Tasks, goals, productivity, hours, teams, and profile pages
-- Team directory and people views
-- Manager and employee profile pages
+- Manager Dashboard, Worker Tracker, Tasks, Teams, and Profile
+- Employee Tasks, Calendar, Teams, Join Team, and Profile
+- Manager join-access controls for team codes and invite links
+- Employee join, leave, and rejoin flow
 - Backend-backed self-profile editing for safe personal info fields
 - Backend-backed notification list, read, and dismiss actions
 - Responsive TaskFlow-styled UI using shared components and hash-based routing
@@ -49,6 +59,7 @@ Frontend notes:
 
 - The frontend work was kept separate from backend source changes.
 - Seeded demo data is shown through the backend seed scripts and API responses.
+- Legacy backend surfaces for goals, productivity, and hours are still present in the API, but they are retired from the live frontend product flow.
 - Some UI actions remain presentation-only in the current frontend, including manager-side employee creation and profile photo controls. Backend support exists for employee creation and URL-based avatar updates, but those specific UI controls are not wired yet; binary photo upload is not implemented.
 
 See [frontend/README.md](frontend/README.md) for the frontend structure, features, and local run instructions.
@@ -65,30 +76,26 @@ See [frontend/README.md](frontend/README.md) for the frontend structure, feature
 
 ## Current Backend Status
 
-Phases 0, 1, 2, 3, 4, 5, 6, 7, 8, and 9 are implemented in `/backend`:
+The backend foundation from Phases 0-9 is still in place, and the live product spine has now been extended through the focused pivot modules:
 
-- Express app bootstrap
-- `GET /api/v1/health`
-- Standard API success and error envelopes
-- Centralized error handling
-- Environment validation and database utilities
-- MVP schema SQL and database documentation
-- Supabase-backed login and current-user endpoints
-- RBAC middleware and manager-only access guard
-- authenticated user profile endpoint
-- scoped teams list, team detail, and team member roster endpoints
-- task CRUD endpoints
-- manager task assignment endpoint
-- employee task status/progress update support
-- employee dashboard summary endpoint
-- manager dashboard summary endpoint
-- hours logging create and list endpoints
-- productivity metrics summary endpoint
-- goals and quota tracking endpoints
-- reusable smoke-check script
+- durable team memberships with leave/rejoin history
+- manager join access generation for team codes and invite links
+- employee self-join and self-leave flows
+- task CRUD, assignment, reassignment, progress, and completion
+- task update history in `task_updates`
+- Worker Tracker MVP
+- Employee Calendar MVP
+- Recurring tasks MVP with real generated task instances
+- reusable smoke/audit scripts
 - Render deployment blueprint
-- Demo auth user seed script for manual QA
-- Phase roadmap and architecture documentation
+- demo auth user seed script for manual QA
+- architecture and integration documentation
+
+Frozen legacy backend surfaces still exist for compatibility, but they are no longer part of the live product experience or any active frontend dependency:
+
+- hours logging
+- productivity metrics
+- goals and quotas
 
 ## Quick Start
 
@@ -166,23 +173,24 @@ The frontend currently uses the following stable backend surface:
 - Team member endpoint: `GET /api/v1/teams/:teamId/members`
 - Team member add endpoint: `POST /api/v1/teams/:teamId/members`
 - Team member remove endpoint: `DELETE /api/v1/teams/:teamId/members/:userId`
+- Team join access endpoint: `GET /api/v1/teams/:teamId/join-access`
+- Team join access regenerate endpoint: `POST /api/v1/teams/:teamId/join-access/regenerate`
+- Team self-join endpoint: `POST /api/v1/team-join`
+- Team self-leave endpoint: `POST /api/v1/teams/:teamId/members/me/leave`
 - Task list endpoint: `GET /api/v1/tasks`
 - Task create endpoint: `POST /api/v1/tasks`
 - Task detail endpoint: `GET /api/v1/tasks/:taskId`
 - Task update endpoint: `PATCH /api/v1/tasks/:taskId`
 - Task delete endpoint: `DELETE /api/v1/tasks/:taskId`
 - Task assignment endpoint: `POST /api/v1/task-assignments`
-- Employee dashboard endpoint: `GET /api/v1/dashboards/employee`
 - Manager dashboard endpoint: `GET /api/v1/dashboards/manager`
-- Productivity metrics endpoint: `GET /api/v1/productivity-metrics`
-- Goals endpoint: `GET /api/v1/goals`
-- Goal create endpoint: `POST /api/v1/goals`
-- Goal update endpoint: `PATCH /api/v1/goals/:goalId`
+- Worker Tracker endpoint: `GET /api/v1/worker-tracker`
+- Recurring task rule create endpoint: `POST /api/v1/recurring-task-rules`
 - Notifications endpoint: `GET /api/v1/notifications`
 - Notification read endpoint: `PATCH /api/v1/notifications/:notificationId/read`
 - Notification dismiss endpoint: `DELETE /api/v1/notifications/:notificationId`
 
-The planned backend roadmap is now complete. Future enhancements can continue using the same response conventions so the frontend team can keep reusing one shared `fetch()` helper.
+Legacy frozen endpoints for hours, productivity, and goals still exist in the backend, but they are no longer part of the promoted frontend product flow.
 
 Frontend handoff items that still need backend support if the team wants them to become real features:
 

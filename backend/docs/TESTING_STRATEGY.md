@@ -1,5 +1,8 @@
 # Testing Strategy
 
+> Note:
+> This testing history includes legacy hours/productivity/goals phases because those backend surfaces still exist. The current live product spine is narrower and focuses on memberships, tasks, Worker Tracker, Teams, Join Team, Calendar, and Profile.
+
 ## Purpose
 
 This backend is tested in layers so student teammates can catch bugs early, verify business rules safely, and present the project with confidence.

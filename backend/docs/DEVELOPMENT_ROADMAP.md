@@ -1,5 +1,8 @@
 # Development Roadmap
 
+> Note:
+> This document preserves the original phased backend build history. The live product has since been narrowed to the focused task-flow spine described in the top-level README, AGENTS guide, and current frontend integration docs. Hours logging, productivity metrics, and goals remain historical/frozen phases rather than active product direction.
+
 ## Delivery Strategy
 
 The backend is developed in phases so each milestone is planned, implemented, tested, documented, and marked complete before the next phase begins.

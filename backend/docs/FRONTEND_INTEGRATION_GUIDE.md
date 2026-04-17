@@ -10,21 +10,19 @@ Stable today:
 - role-aware UI branching for employee vs manager
 - user profile loading through `/users/me`
 - self-profile editing through `PATCH /users/me`
-- manager avatar updates through `PATCH /users/:userId/avatar`
 - team list and team roster loading
 - team creation and editing
-- persistent team membership changes
-- people directory loading for manager workflows
+- manager join-access loading and regeneration
+- employee self-join and self-leave
+- persistent team membership changes with active-roster filtering
 - task creation for managers
 - task assignment for managers
+- Worker Tracker drilldown for managers
 - employee task list loading
 - employee task status and progress updates
-- employee dashboard widgets
-- manager dashboard cards and charts
-- hours logging forms
-- hours summary widgets
-- productivity summary cards and trend charts
-- goals and quota progress widgets
+- employee calendar loading from due-dated assigned tasks
+- recurring task rule creation
+- manager dashboard attention cards
 - notification list, read, and dismiss flows
 - global loading and error handling based on the shared response envelope
 
@@ -32,6 +30,7 @@ Still in progress:
 
 - binary profile-photo upload infrastructure is not implemented; avatar support is URL-based today
 - due-soon task notifications are generated lazily when `/notifications` is read instead of through a background scheduler
+- legacy backend endpoints for hours, productivity, and goals remain available, but they are retired from the live frontend product path and no active screen depends on them
 
 ## Base API Settings
 
@@ -50,8 +49,8 @@ Still in progress:
 | `GET` | `/api/v1/users/me` | Yes | User-profile namespaced endpoint |
 | `PATCH` | `/api/v1/users/me` | Yes | Self-editable profile fields: `firstName`, `lastName`, `jobTitle`, `dateOfBirth`, `address` |
 | `GET` | `/api/v1/users` | Yes | Manager/admin people directory with optional `role`, `teamId`, `search`, and `includeInactive` filters |
-| `POST` | `/api/v1/users` | Yes | Manager/admin employee creation flow with auth user, app profile, and team membership |
-| `PATCH` | `/api/v1/users/:userId/avatar` | Yes | Manager/admin avatar URL update endpoint |
+| `POST` | `/api/v1/users` | Legacy | Backend exists, but the live frontend does not promote employee creation |
+| `PATCH` | `/api/v1/users/:userId/avatar` | Legacy | Backend exists, but the live frontend does not promote avatar management |
 | `GET` | `/api/v1/teams` | Yes | Load visible teams for the authenticated user |
 | `POST` | `/api/v1/teams` | Yes | Manager/admin team creation endpoint |
 | `GET` | `/api/v1/teams/:teamId` | Yes | Load team detail within user scope |
@@ -59,20 +58,26 @@ Still in progress:
 | `GET` | `/api/v1/teams/:teamId/members` | Yes | Load the basic roster for a visible team |
 | `POST` | `/api/v1/teams/:teamId/members` | Yes | Manager/admin team membership add endpoint |
 | `DELETE` | `/api/v1/teams/:teamId/members/:userId` | Yes | Manager/admin team membership remove endpoint |
+| `GET` | `/api/v1/teams/:teamId/join-access` | Yes | Load current join code and invite link for a manageable team |
+| `POST` | `/api/v1/teams/:teamId/join-access/regenerate` | Yes | Rotate team join access for a manageable team |
+| `POST` | `/api/v1/team-join` | Yes | Employee self-join using a join code or invite token |
+| `POST` | `/api/v1/teams/:teamId/members/me/leave` | Yes | Employee self-leave with lifecycle-safe membership handling |
 | `GET` | `/api/v1/tasks` | Yes | Load scoped task lists with filters and pagination metadata |
 | `POST` | `/api/v1/tasks` | Yes | Manager/admin task creation endpoint |
 | `GET` | `/api/v1/tasks/:taskId` | Yes | Load task detail within actor scope |
 | `PATCH` | `/api/v1/tasks/:taskId` | Yes | Manager full update or employee status/progress update |
 | `DELETE` | `/api/v1/tasks/:taskId` | Yes | Manager/admin task deletion endpoint |
 | `POST` | `/api/v1/task-assignments` | Yes | Manager/admin task assignment endpoint |
-| `GET` | `/api/v1/dashboards/employee` | Yes | Load employee dashboard summary cards and charts |
-| `GET` | `/api/v1/dashboards/manager` | Yes | Load manager dashboard summary cards and charts |
-| `GET` | `/api/v1/hours-logged` | Yes | Load scoped hours entries plus weekly/monthly totals |
-| `POST` | `/api/v1/hours-logged` | Yes | Create a new hours log entry for the authenticated user |
-| `GET` | `/api/v1/productivity-metrics` | Yes | Load role-aware productivity rollups and trend data |
-| `GET` | `/api/v1/goals` | Yes | Load visible goals plus quota summary metadata |
-| `POST` | `/api/v1/goals` | Yes | Manager/admin goal creation endpoint |
-| `PATCH` | `/api/v1/goals/:goalId` | Yes | Manager/admin goal update endpoint |
+| `GET` | `/api/v1/dashboards/employee` | Legacy | Retained for compatibility; the live frontend no longer promotes an employee dashboard route |
+| `GET` | `/api/v1/dashboards/manager` | Yes | Load the manager attention dashboard |
+| `GET` | `/api/v1/worker-tracker` | Yes | Load manager Worker Tracker team/employee/task drilldown data |
+| `POST` | `/api/v1/recurring-task-rules` | Yes | Create recurring rules that generate real task instances |
+| `GET` | `/api/v1/hours-logged` | Legacy | Frozen backend surface, not part of the live frontend flow |
+| `POST` | `/api/v1/hours-logged` | Legacy | Frozen backend surface, not part of the live frontend flow |
+| `GET` | `/api/v1/productivity-metrics` | Legacy | Frozen backend surface, retained only for compatibility; no active frontend screen depends on it |
+| `GET` | `/api/v1/goals` | Legacy | Frozen backend surface, not part of the live frontend flow |
+| `POST` | `/api/v1/goals` | Legacy | Frozen backend surface, not part of the live frontend flow |
+| `PATCH` | `/api/v1/goals/:goalId` | Legacy | Frozen backend surface, not part of the live frontend flow |
 | `GET` | `/api/v1/notifications` | Yes | Load persistent notifications with unread count |
 | `PATCH` | `/api/v1/notifications/:notificationId/read` | Yes | Mark a notification as read |
 | `DELETE` | `/api/v1/notifications/:notificationId` | Yes | Dismiss a notification |
@@ -267,6 +272,9 @@ const response = await fetch(
 
 const result = await response.json();
 ```
+
+> Legacy note:
+> The remaining sections below for employee dashboard, hours, productivity, and goals are retained as compatibility references for backend surfaces that still exist, but they are no longer part of the promoted live frontend product flow.
 
 ### Hours Logged List
 

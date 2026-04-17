@@ -1,5 +1,8 @@
 # Backend Architecture
 
+> Note:
+> This document still includes the historical build-out of hours logging, productivity metrics, and goals because those backend surfaces remain in the codebase. The promoted live product has since been narrowed to the focused task-flow spine centered on Dashboard, Worker Tracker, Tasks, Teams, Join Team, Calendar, and Profile.
+
 ## Recommended Stack
 
 | Area | Choice | Why it fits this project |
