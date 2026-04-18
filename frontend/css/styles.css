@@ -1142,6 +1142,7 @@ tbody tr:nth-child(even):hover { background: var(--color-surface-hover); }
 }
 .wt-topbar__select {
   min-width: 200px;
+  width: 100%;
   height: 34px;
   padding: 0 30px 0 10px;
   font-size: 0.85rem;
@@ -1685,6 +1686,34 @@ tbody tr:nth-child(even):hover { background: var(--color-surface-hover); }
   .wt-worker__body { padding-left: 12px; padding-right: 12px; }
   .wt-metrics { flex-wrap: wrap; }
   .wt-metric { min-width: 72px; flex: 1 1 72px; }
+}
+
+@media (max-width: 480px) {
+  .wt-topbar__actions {
+    width: 100%;
+  }
+
+  .wt-topbar__select,
+  .wt-topbar__open-tasks {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .wt-topbar__open-tasks {
+    display: inline-flex;
+    justify-content: center;
+  }
+
+  .wt-metrics {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .wt-metric {
+    min-width: 0;
+    padding: 6px 4px;
+  }
 }
 
 .calendar-shell {
@@ -4329,7 +4358,9 @@ tbody tr:nth-child(even):hover { background: var(--color-surface-hover); }
 }
 
 .join-access-row__value {
-  font-size: 0.98rem;
+  font-family: var(--font-mono);
+  font-size: 0.84rem;
+  font-weight: 600;
   line-height: 1.45;
   color: var(--color-text);
   overflow-wrap: anywhere;
@@ -4344,6 +4375,7 @@ tbody tr:nth-child(even):hover { background: var(--color-surface-hover); }
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .join-shell {
@@ -6094,13 +6126,22 @@ tbody tr:nth-child(even):hover { background: var(--color-surface-hover); }
 }
 
 @media (max-width: 560px) {
+  .cal {
+    overflow-x: auto;
+    padding-bottom: 20px;
+  }
+
+  .cal-grid {
+    min-width: 640px;
+  }
+
   .cal-weekday {
     padding: 6px 4px;
     font-size: 10px;
   }
 
   .cal-day {
-    min-height: 64px;
+    min-height: 84px;
   }
 
   .cal-day__num {
@@ -6197,11 +6238,16 @@ tbody tr:nth-child(even):hover { background: var(--color-surface-hover); }
 
 .mtasks-select {
   appearance: none;
+  display: block;
   background: #fff;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
-  padding: 6px 30px 6px 12px;
+  height: 40px;
+  min-height: 40px;
+  max-height: 40px;
+  padding: 0 30px 0 12px;
   font-size: 13px;
+  line-height: 1.2;
   color: var(--color-text);
   font-family: inherit;
   background-image: linear-gradient(45deg, transparent 50%, var(--color-text-muted) 50%),
@@ -6527,6 +6573,39 @@ tbody tr:nth-child(even):hover { background: var(--color-surface-hover); }
     flex-wrap: wrap;
     justify-content: flex-end;
     width: 100%;
+  }
+}
+
+@media (max-width: 560px) {
+  .mtasks-toolbar {
+    align-items: stretch;
+  }
+
+  .mtasks-toolbar__filters {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    width: 100%;
+  }
+
+  .mtasks-toolbar__filters .mtasks-filter {
+    width: 100%;
+  }
+
+  .mtasks-toolbar__filters .mtasks-filter:nth-child(1),
+  .mtasks-toolbar__filters .mtasks-filter:nth-child(4) {
+    grid-column: 1 / -1;
+  }
+
+  .mtasks-toolbar__actions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .mtasks-select {
+    width: 100%;
+    min-width: 0;
   }
 }
 
@@ -6881,6 +6960,47 @@ tbody tr:nth-child(even):hover { background: var(--color-surface-hover); }
     grid-template-columns: 36px 1fr auto;
   }
   .mteams-member__chips { display: none; }
+}
+
+@media (max-width: 560px) {
+  .mteams--detail .mteams-top__actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .mteams--detail .mteams-top__actions .mteams-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .mteams--detail .mteams-top__actions .mteams-btn--primary {
+    grid-column: 1 / -1;
+  }
+
+  .join-access-block__head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .join-access-block__regen {
+    width: 100%;
+  }
+
+  .join-access-row {
+    gap: 12px;
+  }
+
+  .join-access-row__copy,
+  .join-access-row__action {
+    width: 100%;
+    flex-basis: 100%;
+  }
+
+  .join-access-row__action .btn {
+    width: 100%;
+    justify-content: center;
+  }
 }
 
 .mteams-empty__action {
