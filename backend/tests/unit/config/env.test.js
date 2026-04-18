@@ -64,6 +64,49 @@ describe("environment configuration", () => {
     expect(result.authEmailRedirectTo).toBe("http://localhost:5500/auth/confirm");
   });
 
+  it("requires an explicit production redirect URL", () => {
+    expect(() => loadEnv({
+      NODE_ENV: "production",
+      FRONTEND_APP_ORIGIN: "https://tasktrail.site"
+    })).toThrow(
+      "SUPABASE_AUTH_EMAIL_REDIRECT_TO must be set explicitly in production."
+    );
+  });
+
+  it("rejects loopback and non-https auth URLs in production", () => {
+    expect(() => loadEnv({
+      NODE_ENV: "production",
+      FRONTEND_APP_ORIGIN: "http://localhost:5500",
+      SUPABASE_AUTH_EMAIL_REDIRECT_TO: "http://localhost:5500"
+    })).toThrow(
+      "FRONTEND_APP_ORIGIN cannot include loopback origins in production"
+    );
+  });
+
+  it("requires the production redirect origin to match an allowed frontend origin", () => {
+    expect(() => loadEnv({
+      NODE_ENV: "production",
+      FRONTEND_APP_ORIGIN: "https://tasktrail.site",
+      SUPABASE_AUTH_EMAIL_REDIRECT_TO: "https://auth.tasktrail.site/confirm"
+    })).toThrow(
+      "SUPABASE_AUTH_EMAIL_REDIRECT_TO must share an origin with FRONTEND_APP_ORIGIN in production."
+    );
+  });
+
+  it("accepts explicit https TaskTrail production auth URLs", () => {
+    const result = loadEnv({
+      NODE_ENV: "production",
+      FRONTEND_APP_ORIGIN: "https://tasktrail.site, https://www.tasktrail.site",
+      SUPABASE_AUTH_EMAIL_REDIRECT_TO: "https://tasktrail.site"
+    });
+
+    expect(result.frontendOrigins).toEqual([
+      "https://tasktrail.site",
+      "https://www.tasktrail.site"
+    ]);
+    expect(result.authEmailRedirectTo).toBe("https://tasktrail.site");
+  });
+
   it("throws a readable error when the API prefix is invalid", () => {
     expect(() => loadEnv({ API_PREFIX: "api/v1" })).toThrow(
       "API_PREFIX must start with '/'"

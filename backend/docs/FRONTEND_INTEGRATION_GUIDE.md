@@ -95,7 +95,9 @@ Still in progress:
   - `data.emailRedirectTo`
 - Signup does **not** return an authenticated session.
 - The frontend should show a clear "check your inbox" state after signup and should not try to store access or refresh tokens from the signup response.
+- In production, expect `data.emailRedirectTo` to be the deployed TaskTrail origin such as `https://tasktrail.site`.
 - `POST /api/v1/auth/login` returns `403 EMAIL_NOT_VERIFIED` when the account exists but the email has not been confirmed yet.
+- `POST /api/v1/auth/signup` can also return `429 EMAIL_VERIFICATION_RATE_LIMITED` if Supabase / the configured SMTP provider throttles confirmation-email delivery.
 - `auth/me` and login now self-heal missing or stale app-profile rows from Supabase-auth metadata when possible, then return the canonical app profile.
 - `auth/me` and `users/me` now include `dateOfBirth`, `address`, and `avatarUrl` when available.
 - `teams/:teamId/members` now includes `email`, `avatarUrl`, and `isActive` for roster/detail modals.
@@ -183,7 +185,7 @@ const response = await fetch("http://localhost:4000/api/v1/auth/signup", {
     "Content-Type": "application/json"
   },
   body: JSON.stringify({
-    email: "employee.new@tasktrail.local",
+    email: "employee.new@tasktrail.site",
     password: "example-password",
     firstName: "Ethan",
     lastName: "Employee",
@@ -195,7 +197,7 @@ const result = await response.json();
 
 if (result.success) {
   console.log(result.data.verificationRequired); // true
-  console.log(result.data.emailRedirectTo); // frontend redirect target after verification
+  console.log(result.data.emailRedirectTo); // e.g. https://tasktrail.site in production
 }
 ```
 

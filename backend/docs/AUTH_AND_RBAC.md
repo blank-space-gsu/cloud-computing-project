@@ -22,6 +22,7 @@ Phase 2 uses Supabase Auth as the identity provider, but the frontend talks to b
 - syncs the matching `public.users` profile
 - returns a pending-verification payload, not an authenticated session
 - fails with `409 ACCOUNT_ALREADY_EXISTS` for duplicate email signup
+- fails with `429 EMAIL_VERIFICATION_RATE_LIMITED` when the upstream auth provider throttles confirmation-email delivery
 
 ### `POST /api/v1/auth/login`
 
@@ -96,6 +97,16 @@ Phase 2 adds an auth profile sync trigger:
 - the trusted global app role is applied through backend-controlled auth metadata updates
 
 This keeps auth identity and application profile data aligned.
+
+## Production Email Verification Delivery
+
+- TaskTrail’s signup verification flow assumes Supabase email confirmations stay enabled.
+- The backend passes `SUPABASE_AUTH_EMAIL_REDIRECT_TO` into `supabase.auth.signUp(...)`, so production must set that value explicitly to the deployed TaskTrail frontend URL.
+- Arbitrary inbox delivery for signup confirmations depends on Supabase custom SMTP. Supabase’s default email service is intentionally limited and should not be treated as production delivery.
+- TaskTrail’s intended production sender convention is:
+  - visible sender: `TaskTrail Auth <auth@tasktrail.site>`
+  - mail / return-path infrastructure: `auth.tasktrail.site`
+- The repo keeps the auth flow intact, but the SMTP provider itself is configured outside the app in the Supabase dashboard (or Management API), typically using Resend.
 
 ## Team Join Access Role Rules
 

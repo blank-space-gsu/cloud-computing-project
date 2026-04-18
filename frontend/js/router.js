@@ -1,4 +1,5 @@
 import { getDefaultAuthenticatedHash, isEmployee, isLoggedIn, isManager } from './auth.js';
+import { closeModal } from './components/modal.js';
 
 let routes = {};
 let currentCleanup = null;
@@ -21,6 +22,8 @@ export function navigate(hash) {
 }
 
 export async function resolve() {
+  closeModal();
+
   if (currentCleanup) {
     currentCleanup();
     currentCleanup = null;

@@ -80,7 +80,7 @@ No authentication required.
 
 ```json
 {
-  "email": "manager.new@tasktrail.local",
+  "email": "manager.new@tasktrail.site",
   "password": "example-password",
   "firstName": "Maya",
   "lastName": "Manager",
@@ -105,11 +105,11 @@ No authentication required.
   "success": true,
   "message": "Signup successful. Check your inbox to verify your email.",
   "data": {
-    "email": "manager.new@tasktrail.local",
+    "email": "manager.new@tasktrail.site",
     "appRole": "manager",
     "verificationRequired": true,
     "verificationEmailSent": true,
-    "emailRedirectTo": "http://localhost:5500"
+    "emailRedirectTo": "https://tasktrail.site"
   }
 }
 ```
@@ -125,6 +125,7 @@ No authentication required.
 - `400 VALIDATION_ERROR`
 - `400 INVALID_JSON`
 - `409 ACCOUNT_ALREADY_EXISTS`
+- `429 EMAIL_VERIFICATION_RATE_LIMITED`
 - `502 AUTH_SIGNUP_FAILED`
 - `502 AUTH_SIGNUP_ROLE_SYNC_FAILED`
 - `503 AUTH_CONFIGURATION_MISSING`

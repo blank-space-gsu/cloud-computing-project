@@ -8,6 +8,7 @@ import { showError, showSuccess } from '../components/toast.js';
 import { openModal, closeModal } from '../components/modal.js';
 import { taskCard } from '../components/taskCard.js';
 import { statusLabel, priorityLabel, formatDate, formatShortDate, formatTimeRemaining, mondayDateString } from '../utils/format.js';
+import { selectPreferredTeam } from '../utils/teams.js';
 
 let currentPage = 1;
 const PAGE_LIMIT = 12;
@@ -461,7 +462,8 @@ async function renderManagerTasks(container) {
 
   clearElement(container);
 
-  const state = { teamId: teams[0]?.id || '', status: '', priority: '', assigneeUserId: '', page: 1 };
+  const preferredTeam = selectPreferredTeam(teams);
+  const state = { teamId: preferredTeam?.id || teams[0]?.id || '', status: '', priority: '', assigneeUserId: '', page: 1 };
   let members = [];
 
   const shell = el('div', { className: 'mtasks' });

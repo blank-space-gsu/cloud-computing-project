@@ -146,24 +146,32 @@ export function priorityLabel(priority) {
   return capitalize(priority);
 }
 
+function formatLocalDateParts(date) {
+  const value = new Date(date);
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export function mondayDateString(date = new Date()) {
   const d = new Date(date);
   const day = d.getDay();
   const diff = d.getDate() - day + (day === 0 ? -6 : 1);
   const monday = new Date(d.setDate(diff));
-  return monday.toISOString().split('T')[0];
+  return formatLocalDateParts(monday);
 }
 
 export function todayDateString() {
-  return new Date().toISOString().split('T')[0];
+  return formatLocalDateParts(new Date());
 }
 
 export function firstDayOfCurrentMonth(date = new Date()) {
-  const d = new Date(date.getFullYear(), date.getMonth(), 1);
-  return d.toISOString().split('T')[0];
+  const value = new Date(date);
+  return formatLocalDateParts(new Date(value.getFullYear(), value.getMonth(), 1));
 }
 
 export function lastDayOfCurrentMonth(date = new Date()) {
-  const d = new Date(date.getFullYear(), date.getMonth() + 1, 0);
-  return d.toISOString().split('T')[0];
+  const value = new Date(date);
+  return formatLocalDateParts(new Date(value.getFullYear(), value.getMonth() + 1, 0));
 }

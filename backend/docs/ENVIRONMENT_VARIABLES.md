@@ -19,8 +19,8 @@ This project keeps runtime configuration in environment variables so secrets do 
 | `PORT` | Yes | `4000` | Port used by the Express server |
 | `APP_NAME` | Yes | `workforce-task-management-backend` | Display name for health and logging output |
 | `API_PREFIX` | Yes | `/api/v1` | Base prefix for all REST endpoints |
-| `FRONTEND_APP_ORIGIN` | Yes | `http://localhost:5500` | Allowed frontend origin for CORS. Multiple values can be comma-separated. |
-| `SUPABASE_AUTH_EMAIL_REDIRECT_TO` | Recommended | `http://localhost:5500` | Redirect target used in Supabase verification emails. Defaults to the first frontend origin when omitted. |
+| `FRONTEND_APP_ORIGIN` | Yes | `http://localhost:5500` | Allowed frontend origin for CORS. Multiple values can be comma-separated. In production, use exact HTTPS TaskTrail origins such as `https://tasktrail.site,https://www.tasktrail.site`. |
+| `SUPABASE_AUTH_EMAIL_REDIRECT_TO` | Required in production | `http://localhost:5500` | Redirect target used in Supabase verification emails. In production this must be set explicitly, must use HTTPS, and must share an origin with `FRONTEND_APP_ORIGIN`. |
 | `SUPABASE_PROJECT_REF` | Recommended | `dfllpxijgfcoazwstegl` | Helps document which hosted Supabase project this backend targets |
 | `SUPABASE_URL` | Recommended in Phase 1, required in Phase 2 | `https://dfllpxijgfcoazwstegl.supabase.co` | Base URL for Supabase Auth and future backend integrations |
 | `SUPABASE_ANON_KEY` | Not used in Phase 1, required in Phase 2 | `...` | Used for auth flows such as password sign-in via backend-managed endpoints |
@@ -42,6 +42,24 @@ This project keeps runtime configuration in environment variables so secrets do 
 - Hosted Supabase projects should also have email confirmations enabled in Auth settings when self-service signup is active.
 - For the Supabase pooler setup used in this project, `sslmode=no-verify` is the practical local-development setting.
 - Phase 9 adds optional smoke-test variables for deployment verification; they are not required for the API to boot.
+
+## Production Auth Email Notes
+
+- The backend does **not** send SMTP mail directly. Supabase Auth sends verification emails, so SMTP credentials belong in the Supabase dashboard or Management API settings, not in this backend `.env`.
+- For TaskTrail production, set:
+  - `FRONTEND_APP_ORIGIN=https://tasktrail.site` (plus any exact additional deployed origins)
+  - `SUPABASE_AUTH_EMAIL_REDIRECT_TO=https://tasktrail.site`
+- The backend now fails fast in production if:
+  - `SUPABASE_AUTH_EMAIL_REDIRECT_TO` is omitted
+  - `FRONTEND_APP_ORIGIN` or `SUPABASE_AUTH_EMAIL_REDIRECT_TO` still point at localhost / loopback hosts
+  - either value is non-HTTPS
+  - the redirect URL does not share an origin with the configured frontend origin list
+- TaskTrail’s production SMTP delivery should use Supabase custom SMTP with Resend:
+  - SMTP host: `smtp.resend.com`
+  - SMTP user: `resend`
+  - SMTP password: a Resend API key
+  - sender identity: `TaskTrail Auth <auth@tasktrail.site>`
+- The mail infrastructure can still be isolated onto `auth.tasktrail.site` through Resend’s custom return-path setting while keeping the visible sender as `auth@tasktrail.site`.
 
 ## Security Guidance
 

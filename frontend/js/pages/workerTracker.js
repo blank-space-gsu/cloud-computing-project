@@ -13,6 +13,7 @@ import {
   priorityLabel,
   statusLabel
 } from '../utils/format.js';
+import { selectPreferredTeam } from '../utils/teams.js';
 
 /* ============================================================
  * Worker Tracker — hierarchical drilldown
@@ -122,6 +123,12 @@ export default async function workerTrackerPage(container, params = {}) {
     const initial = await fetchTeam(params.teamId || null, params.memberUserId || null);
     state.availableTeams = initial.availableTeams || [];
 
+    const preferredTeamId = params.teamId || selectPreferredTeam(state.availableTeams)?.id || initial.selectedTeamId;
+    const data =
+      preferredTeamId && preferredTeamId !== initial.selectedTeamId
+        ? await fetchTeam(preferredTeamId, params.memberUserId || null)
+        : initial;
+
     clearElement(container);
 
     if (!state.availableTeams.length) {
@@ -134,8 +141,8 @@ export default async function workerTrackerPage(container, params = {}) {
       return;
     }
 
-    state.initialTeamId = initial.selectedTeamId;
-    cacheTeamData(state.initialTeamId, initial);
+    state.initialTeamId = data.selectedTeamId;
+    cacheTeamData(state.initialTeamId, data);
 
     // Default: the focused team is expanded. Also honor any `openTeams` from the hash.
     const hash = parseHashState();
@@ -147,10 +154,10 @@ export default async function workerTrackerPage(container, params = {}) {
     }
 
     if (params.memberUserId) {
-      const m = (initial.members || []).find((x) => x.userId === params.memberUserId);
+      const m = (data.members || []).find((x) => x.userId === params.memberUserId);
       if (m) {
         state.expandedWorker.set(state.initialTeamId, m.userId);
-        state.workerTasks.set(`${state.initialTeamId}:${m.userId}`, initial.tasks || []);
+        state.workerTasks.set(`${state.initialTeamId}:${m.userId}`, data.tasks || []);
       }
     }
 
@@ -218,10 +225,11 @@ function buildTopBar() {
     for (const t of state.availableTeams) {
       sel.appendChild(el('option', { value: t.id }, t.name));
     }
+    sel.value = state.initialTeamId || '';
     sel.addEventListener('change', async () => {
       const id = sel.value;
-      sel.value = '';
       if (!id) return;
+      state.initialTeamId = id;
       state.expandedTeams.add(id);
       if (!state.teamCache.has(id)) {
         await loadTeam(id);
@@ -707,6 +715,7 @@ function toggleTeam(teamId) {
   if (state.expandedTeams.has(teamId)) {
     state.expandedTeams.delete(teamId);
   } else {
+    state.initialTeamId = teamId;
     state.expandedTeams.add(teamId);
     if (!state.teamCache.has(teamId) && !state.loadingTeams.has(teamId)) {
       loadTeam(teamId);

@@ -74,6 +74,8 @@ See [frontend/README.md](frontend/README.md) for the frontend structure, feature
 - Vitest + Supertest for testing
 - Render for deployment
 
+Production signup verification should use Supabase Auth with custom SMTP backed by Resend. The repo-side runtime expectations and the manual dashboard setup checklist live in [backend/docs/DEPLOYMENT_GUIDE.md](/Users/admin/Documents/GitHub/cloud-computing-project/backend/docs/DEPLOYMENT_GUIDE.md).
+
 ## Current Backend Status
 
 The backend foundation from Phases 0-9 is still in place, and the live product spine has now been extended through the focused pivot modules:
