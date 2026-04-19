@@ -1,17 +1,20 @@
 import { el, clearElement } from '../utils/dom.js';
-import { getUser, isManager, logout } from '../auth.js';
+import { getUser, isEmployee, isManager, logout } from '../auth.js';
 
 const SIDEBAR_STORAGE_KEY = 'taskflow-sidebar-collapsed';
 
 function navItems() {
-  return [
-    { path: '#/dashboard', label: 'Dashboard', icon: '📊' },
+  const items = [
+    ...(isManager() ? [{ path: '#/dashboard', label: 'Dashboard', icon: '📊' }] : []),
+    ...(isManager() ? [{ path: '#/worker-tracker', label: 'Worker Tracker', icon: '🧭' }] : []),
     { path: '#/tasks', label: 'Tasks', icon: '✅' },
-    { path: '#/teams', label: isManager() ? 'Teams & People' : 'Teams', icon: '👥' },
-    { path: '#/productivity', label: 'Productivity', icon: '📈' },
-    { path: '#/goals', label: 'Goals', icon: '🎯' },
+    ...(isEmployee() ? [{ path: '#/calendar', label: 'Calendar', icon: '🗓️' }] : []),
+    { path: '#/teams', label: 'Teams', icon: '👥' },
+    ...(isEmployee() ? [{ path: '#/join', label: 'Join Team', icon: '🔑' }] : []),
     { path: '#/profile', label: 'Profile', icon: '🙍' }
   ];
+
+  return items;
 }
 
 export function isSidebarCollapsed() {
@@ -59,7 +62,7 @@ export function renderSidebar() {
 
   const brand = el('div', { className: 'sidebar-brand' },
     el('span', { className: 'brand-icon' }, '⚡'),
-    el('span', { className: 'brand-text' }, 'TaskFlow')
+    el('span', { className: 'brand-text' }, 'TaskTrail')
   );
 
   const nav = el('nav', { className: 'sidebar-nav' });

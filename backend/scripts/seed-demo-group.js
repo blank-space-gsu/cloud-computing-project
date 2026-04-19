@@ -21,7 +21,7 @@ import {
 
 const DEMO_GROUP_NAME = "Physical Demo Group";
 const DEMO_GROUP_DESCRIPTION =
-  "Repeatable live demo team with seeded tasks, hours, goals, and assignments.";
+  "Repeatable live demo team with seeded tasks, join access, and assignments.";
 
 const DEMO_EMAILS = {
   manager: "manager.demo@cloudcomputing.local",

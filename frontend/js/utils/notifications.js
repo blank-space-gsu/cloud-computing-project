@@ -5,6 +5,7 @@ import { getTeamEventsForUser } from './localTeams.js';
 
 const STORAGE_KEY = 'taskflow-notification-state-v1';
 const DUE_SOON_SECONDS = 2 * 24 * 60 * 60;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function readState() {
   try {
@@ -87,6 +88,40 @@ function buildTeamNotifications(userId) {
   }));
 }
 
+function notificationLink(notification) {
+  if (notification.taskId) return '#/tasks';
+  if (notification.teamId) return '#/teams';
+  return '#/profile?section=notifications';
+}
+
+function mapBackendNotification(notification) {
+  return {
+    id: notification.id,
+    type: notification.type,
+    title: notification.title,
+    body: notification.message || '',
+    createdAt: notification.createdAt,
+    readAt: notification.readAt,
+    dismissedAt: notification.dismissedAt,
+    link: notificationLink(notification),
+    meta: {
+      taskId: notification.taskId || '',
+      teamId: notification.teamId || ''
+    }
+  };
+}
+
+async function loadBackendNotifications() {
+  const { data } = await api.get('/notifications?includeDismissed=true&page=1&limit=50');
+  const all = (data.notifications || []).map(mapBackendNotification);
+
+  return {
+    active: all.filter((item) => !item.dismissedAt),
+    past: all.filter((item) => item.readAt || item.dismissedAt),
+    all
+  };
+}
+
 function mergeNotifications(existing, generated) {
   const byId = new Map(existing.map((item) => [item.id, item]));
 
@@ -108,6 +143,12 @@ export async function syncNotifications() {
     return { active: [], past: [], all: [] };
   }
 
+  try {
+    return await loadBackendNotifications();
+  } catch {
+    // Keep the UI usable if the backend notification module is unavailable.
+  }
+
   const existing = getUserBucket(user.id);
   const dueTasks = await loadDueTaskNotifications(user);
   const teamEvents = buildTeamNotifications(user.id);
@@ -121,7 +162,12 @@ export async function syncNotifications() {
   };
 }
 
-export function markNotificationRead(notificationId) {
+export async function markNotificationRead(notificationId) {
+  if (UUID_PATTERN.test(notificationId)) {
+    await api.patch(`/notifications/${notificationId}/read`, {});
+    return;
+  }
+
   const user = getUser();
   if (!user) return;
 
@@ -133,7 +179,12 @@ export function markNotificationRead(notificationId) {
   saveUserBucket(user.id, bucket);
 }
 
-export function dismissNotification(notificationId) {
+export async function dismissNotification(notificationId) {
+  if (UUID_PATTERN.test(notificationId)) {
+    await api.del(`/notifications/${notificationId}`);
+    return;
+  }
+
   const user = getUser();
   if (!user) return;
 

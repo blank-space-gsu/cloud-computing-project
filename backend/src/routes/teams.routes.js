@@ -1,13 +1,16 @@
 import { Router } from "express";
-import { PRIVILEGED_ROLES } from "../constants/roles.js";
+import { APP_ROLES, PRIVILEGED_ROLES } from "../constants/roles.js";
 import { authorizeRoles } from "../middleware/authorizeRoles.js";
 import authenticate from "../middleware/authenticate.js";
 import {
   addTeamMemberHandler,
   createTeamHandler,
+  getTeamJoinAccessHandler,
   getTeamById,
+  leaveMyTeamHandler,
   listMyTeams,
   listTeamMembers,
+  regenerateTeamJoinAccessHandler,
   removeTeamMemberHandler,
   updateTeamHandler
 } from "../controllers/teams.controller.js";
@@ -28,12 +31,30 @@ teamsRouter.patch(
   authorizeRoles(...PRIVILEGED_ROLES),
   updateTeamHandler
 );
+teamsRouter.get(
+  "/:teamId/join-access",
+  authenticate,
+  authorizeRoles(...PRIVILEGED_ROLES),
+  getTeamJoinAccessHandler
+);
+teamsRouter.post(
+  "/:teamId/join-access/regenerate",
+  authenticate,
+  authorizeRoles(...PRIVILEGED_ROLES),
+  regenerateTeamJoinAccessHandler
+);
 teamsRouter.get("/:teamId/members", authenticate, listTeamMembers);
 teamsRouter.post(
   "/:teamId/members",
   authenticate,
   authorizeRoles(...PRIVILEGED_ROLES),
   addTeamMemberHandler
+);
+teamsRouter.post(
+  "/:teamId/members/me/leave",
+  authenticate,
+  authorizeRoles(APP_ROLES.EMPLOYEE),
+  leaveMyTeamHandler
 );
 teamsRouter.delete(
   "/:teamId/members/:userId",

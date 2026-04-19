@@ -1,9 +1,17 @@
-import { isLoggedIn, isManager } from './auth.js';
+import { getDefaultAuthenticatedHash, isEmployee, isLoggedIn, isManager } from './auth.js';
+import { closeModal } from './components/modal.js';
 
 let routes = {};
 let currentCleanup = null;
 const publicRoutes = new Set(['/', '/login']);
-const retiredRoutes = new Set(['/hours']);
+const retiredRoutes = new Set(['/hours', '/productivity', '/goals']);
+const managerOnlyRoutes = new Set(['/dashboard', '/worker-tracker']);
+const employeeOnlyRoutes = new Set(['/calendar']);
+
+function buildLoginRedirectHash(hash) {
+  const redirect = hash && hash !== '#/' ? hash : '#/dashboard';
+  return `#/login?redirect=${encodeURIComponent(redirect)}`;
+}
 
 export function register(path, handler) {
   routes[path] = handler;
@@ -14,6 +22,8 @@ export function navigate(hash) {
 }
 
 export async function resolve() {
+  closeModal();
+
   if (currentCleanup) {
     currentCleanup();
     currentCleanup = null;
@@ -31,18 +41,29 @@ export async function resolve() {
   }
 
   if (retiredRoutes.has(path)) {
-    window.location.hash = isLoggedIn() ? '#/dashboard' : '#/';
+    window.location.hash = isLoggedIn() ? getDefaultAuthenticatedHash() : '#/';
     return;
   }
 
   if (!publicRoutes.has(path) && !isLoggedIn()) {
-    window.location.hash = '#/';
+    window.location.hash = buildLoginRedirectHash(hash);
     return;
   }
 
   if (publicRoutes.has(path) && isLoggedIn()) {
-    window.location.hash = '#/dashboard';
+    window.location.hash = getDefaultAuthenticatedHash();
     return;
+  }
+
+  if (isLoggedIn()) {
+    if (managerOnlyRoutes.has(path) && isEmployee()) {
+      window.location.hash = getDefaultAuthenticatedHash();
+      return;
+    }
+    if (employeeOnlyRoutes.has(path) && isManager()) {
+      window.location.hash = getDefaultAuthenticatedHash();
+      return;
+    }
   }
 
   let handler = routes[path];
@@ -71,7 +92,7 @@ export async function resolve() {
   }
 
   if (!handler) {
-    window.location.hash = isLoggedIn() ? '#/dashboard' : '#/';
+    window.location.hash = isLoggedIn() ? getDefaultAuthenticatedHash() : '#/';
     return;
   }
 

@@ -53,9 +53,12 @@ const mapWorkloadRow = (row) => ({
   userId: row.user_id,
   fullName: `${row.first_name} ${row.last_name}`.trim(),
   jobTitle: row.job_title,
+  taskCount: Number(row.assigned_task_count ?? 0),
   assignedTaskCount: Number(row.assigned_task_count ?? 0),
   completedTaskCount: Number(row.completed_task_count ?? 0),
+  openTaskCount: Number(row.open_task_count ?? 0),
   inProgressTaskCount: Number(row.in_progress_task_count ?? 0),
+  blockedTaskCount: Number(row.blocked_task_count ?? 0),
   overdueTaskCount: Number(row.overdue_task_count ?? 0),
   totalEstimatedHours:
     row.total_estimated_hours === null || row.total_estimated_hours === undefined
@@ -68,7 +71,16 @@ const mapWorkloadRow = (row) => ({
   averageProgressPercent:
     row.average_progress_percent === null || row.average_progress_percent === undefined
       ? 0
-      : Number(row.average_progress_percent)
+      : Number(row.average_progress_percent),
+  completionRate:
+    Number(row.assigned_task_count ?? 0) === 0
+      ? 0
+      : Number(
+          (
+            (Number(row.completed_task_count ?? 0) / Number(row.assigned_task_count ?? 0)) *
+            100
+          ).toFixed(2)
+        )
 });
 
 const buildTeamFilterClause = (teamIds, startIndex = 1) => ({
@@ -324,7 +336,9 @@ export const getManagerDashboardSnapshot = async (
         u.job_title,
         count(*) as assigned_task_count,
         count(*) filter (where t.status = 'completed') as completed_task_count,
+        count(*) filter (where t.status not in ${CLOSED_TASK_STATUSES_SQL}) as open_task_count,
         count(*) filter (where t.status = 'in_progress') as in_progress_task_count,
+        count(*) filter (where t.status = 'blocked') as blocked_task_count,
         count(*) filter (
           where t.status not in ${CLOSED_TASK_STATUSES_SQL}
             and t.due_at is not null

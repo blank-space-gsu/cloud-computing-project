@@ -23,6 +23,40 @@ function writeState(state) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
+function stripBackendTeamArtifacts(state, backendTeamIds = []) {
+  const ids = new Set((backendTeamIds || []).filter(Boolean));
+  if (!ids.size) return state;
+
+  let changed = false;
+  const overrides = { ...(state.overrides || {}) };
+  const additions = { ...(state.additions || {}) };
+
+  ids.forEach((teamId) => {
+    if (Object.hasOwn(overrides, teamId)) {
+      delete overrides[teamId];
+      changed = true;
+    }
+
+    if (Object.hasOwn(additions, teamId)) {
+      delete additions[teamId];
+      changed = true;
+    }
+  });
+
+  if (!changed) {
+    return state;
+  }
+
+  const nextState = {
+    ...state,
+    overrides,
+    additions
+  };
+
+  writeState(nextState);
+  return nextState;
+}
+
 function uniqueById(items = []) {
   const seen = new Set();
   return items.filter((item) => {
@@ -76,20 +110,11 @@ function isUserVisibleInCustomTeam(team, userId) {
 }
 
 export function getWorkspaceTeams(baseTeams = [], currentUser) {
-  const state = readState();
-  const teams = baseTeams.map((team) => {
-    const override = state.overrides[team.id];
-    const additions = state.additions[team.id] || [];
-    const memberAdditions = additions.filter((member) => member.membershipRole !== 'manager').length;
-    const managerAdditions = additions.filter((member) => member.membershipRole === 'manager').length;
-
-    return {
-      ...applyOverride(team, override),
-      memberCount: Number(team.memberCount || 0) + memberAdditions + managerAdditions,
-      managerCount: Number(team.managerCount || 0) + managerAdditions,
-      isLocalTeam: false
-    };
-  });
+  const state = stripBackendTeamArtifacts(readState(), baseTeams.map((team) => team.id));
+  const teams = baseTeams.map((team) => ({
+    ...team,
+    isLocalTeam: false
+  }));
 
   const customTeams = state.customTeams
     .filter((team) => currentUser && isUserVisibleInCustomTeam(team, currentUser.id))
@@ -99,7 +124,10 @@ export function getWorkspaceTeams(baseTeams = [], currentUser) {
 }
 
 export function getTeamDetail(teamId, { baseTeam = null, baseMembers = [], currentUser = null } = {}) {
-  const state = readState();
+  const state = stripBackendTeamArtifacts(
+    readState(),
+    baseTeam?.id ? [baseTeam.id] : [teamId]
+  );
   const customTeam = state.customTeams.find((team) => team.id === teamId);
 
   if (customTeam) {
@@ -114,13 +142,8 @@ export function getTeamDetail(teamId, { baseTeam = null, baseMembers = [], curre
     };
   }
 
-  const override = state.overrides[teamId];
-  const additions = state.additions[teamId] || [];
-  const team = applyOverride(baseTeam || { id: teamId }, override);
-  const members = uniqueById([
-    ...baseMembers,
-    ...additions
-  ]);
+  const team = applyOverride(baseTeam || { id: teamId }, null);
+  const members = uniqueById(baseMembers);
 
   const managerCount = members.filter((member) => member.membershipRole === 'manager').length;
 

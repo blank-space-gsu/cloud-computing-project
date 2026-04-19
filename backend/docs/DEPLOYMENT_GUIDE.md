@@ -13,6 +13,44 @@ Why this is the best fit for the project:
 
 The database still stays in Supabase, because the project requirement is Supabase PostgreSQL.
 
+## Backend Docker Image
+
+TaskTrail’s backend can also be packaged as a single production container for Oracle or any other container host. This repo now includes:
+
+- Dockerfile: [backend/Dockerfile](/Users/admin/Documents/GitHub/cloud-computing-project/backend/Dockerfile)
+- Docker ignore rules: [backend/.dockerignore](/Users/admin/Documents/GitHub/cloud-computing-project/backend/.dockerignore)
+
+Build the image from the repository root:
+
+```bash
+docker build -t tasktrail-backend ./backend
+```
+
+Run it with runtime environment variables:
+
+```bash
+docker run --rm -p 4000:4000 \
+  -e NODE_ENV=production \
+  -e PORT=4000 \
+  -e FRONTEND_APP_ORIGIN=https://tasktrail.site \
+  -e SUPABASE_AUTH_EMAIL_REDIRECT_TO=https://tasktrail.site \
+  -e SUPABASE_URL=your-supabase-url \
+  -e SUPABASE_ANON_KEY=your-supabase-anon-key \
+  -e SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key \
+  -e SUPABASE_JWT_SECRET=your-supabase-jwt-secret \
+  -e DATABASE_URL=your-supabase-pooler-url \
+  -e DATABASE_SSL_REJECT_UNAUTHORIZED=false \
+  tasktrail-backend
+```
+
+Notes:
+
+- The container uses `npm start`, which runs `node src/server.js`.
+- The image installs production dependencies only.
+- Secrets must be injected at runtime; do not bake `.env` into the image.
+- `NODE_ENV=production` requires real HTTPS frontend origins and a real `SUPABASE_AUTH_EMAIL_REDIRECT_TO`, so localhost-only values are intentionally rejected in that mode.
+- `PORT` defaults to `4000` and the image exposes `4000`.
+
 ## Deployment Artifacts in This Repo
 
 - root Blueprint file: `/Users/admin/Documents/GitHub/cloud-computing-project/render.yaml`
@@ -32,7 +70,12 @@ Before deploying:
    - `SUPABASE_SERVICE_ROLE_KEY`
    - `SUPABASE_JWT_SECRET`
    - `DATABASE_URL`
-   - `FRONTEND_APP_ORIGIN`
+   - `FRONTEND_APP_ORIGIN` (`https://tasktrail.site` and any exact additional deployed origins)
+   - `SUPABASE_AUTH_EMAIL_REDIRECT_TO` (`https://tasktrail.site`)
+4. you should also have the production email-delivery inputs ready for Supabase Auth:
+   - a verified Resend domain for TaskTrail
+   - a Resend API key to use as the SMTP password
+   - the final sender identity (`TaskTrail Auth <auth@tasktrail.site>`)
 
 ## Option A - Deploy with the Included `render.yaml`
 
@@ -68,7 +111,8 @@ These should be set in Render:
 | --- | --- | --- |
 | `NODE_ENV` | `production` | Required for production mode |
 | `API_PREFIX` | `/api/v1` | Keep consistent with docs and frontend |
-| `FRONTEND_APP_ORIGIN` | your deployed frontend origin | Comma-separate multiple allowed origins if needed |
+| `FRONTEND_APP_ORIGIN` | `https://tasktrail.site` | Comma-separate multiple exact allowed origins if needed |
+| `SUPABASE_AUTH_EMAIL_REDIRECT_TO` | `https://tasktrail.site` | Where Supabase should redirect users after they confirm signup |
 | `SUPABASE_PROJECT_REF` | Supabase project ref | Helpful for operational clarity |
 | `SUPABASE_URL` | Supabase project settings | Required for auth |
 | `SUPABASE_ANON_KEY` | Supabase project settings | Required for backend-managed login |
@@ -77,6 +121,52 @@ These should be set in Render:
 | `DATABASE_URL` | Supabase connection string | Use the pooler connection string |
 | `DATABASE_SSL_REJECT_UNAUTHORIZED` | `false` | Practical with the Supabase pooler connection used here |
 | `DEMO_USER_PASSWORD` | optional | Useful only if you want demo-user seeding or smoke login checks |
+
+## Production Auth Email Setup
+
+TaskTrail’s backend already performs the correct signup + verification flow. What blocked production delivery was operational mail configuration: Supabase’s default email service is intentionally limited and should be replaced with custom SMTP for real signup verification traffic.
+
+### Repo / runtime settings
+
+Set these in the deployed backend environment:
+
+- `FRONTEND_APP_ORIGIN=https://tasktrail.site`
+- `SUPABASE_AUTH_EMAIL_REDIRECT_TO=https://tasktrail.site`
+
+The backend now fails fast in production if either value still points at localhost, is non-HTTPS, or if the redirect URL does not share an origin with the configured frontend origin list.
+
+### Resend dashboard steps
+
+1. Add a sending domain in Resend.
+2. Use a TaskTrail-owned domain. Resend recommends using a subdomain to isolate sender reputation and make the sending purpose clearer.
+3. To match the requested TaskTrail convention:
+   - visible sender: `auth@tasktrail.site`
+   - mail infrastructure / return-path: `auth.tasktrail.site`
+   Verify `tasktrail.site` in Resend, then set the custom return path to `auth`. Resend documents that custom return paths control the SPF / Return-Path subdomain and default to `send.<domain>`.
+4. Add the DNS records Resend shows for that domain. Resend requires SPF and DKIM records for sending, and recommends adding DMARC for stronger trust with inbox providers.
+5. Wait for the domain status to become `verified`.
+6. Create the API key you will use as the SMTP password. Resend SMTP uses:
+   - host: `smtp.resend.com`
+   - username: `resend`
+   - password: your Resend API key
+   - port: `465` for implicit TLS or `587` for STARTTLS.
+7. If you want to inspect domain status through the CLI, use a full-access Resend API key. In this environment the installed CLI is authenticated, but only with a sending-access key, which cannot list domains.
+
+### Supabase dashboard steps
+
+1. Open **Authentication -> URL Configuration**.
+2. Set **Site URL** to `https://tasktrail.site`. This is the default redirect URL used for email confirmations and password resets.
+3. Add exact **Redirect URLs** for every deployed verification return URL you intend to allow, starting with `https://tasktrail.site`. Prefer exact production URLs rather than loose wildcard patterns.
+4. Keep **Confirm email** enabled. With confirm email enabled, `signUp()` returns a user and `session: null`; if it is disabled, signup returns an immediate session instead.
+5. Open **Authentication -> SMTP Settings** (or the equivalent Auth config screen) and enable custom SMTP. Supabase’s custom SMTP settings expect:
+   - `smtp_admin_email`: `auth@tasktrail.site`
+   - `smtp_host`: `smtp.resend.com`
+   - `smtp_port`: `465` or `587`
+   - `smtp_user`: `resend`
+   - `smtp_pass`: your Resend API key
+   - sender name: `TaskTrail Auth`.
+6. After custom SMTP is saved, review **Authentication -> Rate Limits** and raise the email send limit to a sane production value.
+7. If you customize Supabase email templates later, keep the confirmation links aligned with `Site URL` / `RedirectTo`, and avoid provider-side link rewriting or tracking that can break confirmation URLs.
 
 ## Deployment Sequence
 
@@ -123,8 +213,13 @@ Before a presentation:
 
 - keep real secrets only in Render environment-variable settings, not in the repo
 - if the frontend is deployed separately, remember to update `FRONTEND_APP_ORIGIN`
+- keep Supabase Auth email confirmations enabled when self-service signup is live
+- if you need verification emails to reach arbitrary inboxes, configure a production SMTP provider in Supabase Auth
+- TaskTrail production should use Resend-backed custom SMTP instead of the default Supabase provider
 - if deployment fails but health passes locally, compare Render environment variables first
 - if auth fails in production, verify `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_JWT_SECRET`
+- if verification links redirect to the wrong place, verify both Supabase URL Configuration and `SUPABASE_AUTH_EMAIL_REDIRECT_TO`
+- if verification emails stop arriving, check both the Resend verified-domain state and Supabase Auth SMTP settings before changing application code
 - if database connectivity fails, verify the Supabase pooler `DATABASE_URL`
 
 ## Rollback Approach

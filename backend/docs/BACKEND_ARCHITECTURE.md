@@ -1,5 +1,8 @@
 # Backend Architecture
 
+> Note:
+> This document still includes the historical build-out of hours logging, productivity metrics, and goals because those backend surfaces remain in the codebase. The promoted live product has since been narrowed to the focused task-flow spine centered on Dashboard, Worker Tracker, Tasks, Teams, Join Team, Calendar, and Profile.
+
 ## Recommended Stack
 
 | Area | Choice | Why it fits this project |
@@ -92,7 +95,7 @@ This keeps HTTP concerns out of business logic and keeps database queries out of
 - managers can access team productivity metrics and individual productivity metrics for users in manageable teams
 - employees can view team-scoped goals for their teams and user-scoped goals assigned to them
 - managers can create and update team-scoped or employee-scoped goals for teams they manage
-- the current implementation includes `POST /auth/login`, `GET /auth/me`, `GET /users/me`, `GET /teams`, `GET /teams/:teamId`, `GET /teams/:teamId/members`, `GET /tasks`, `POST /tasks`, `GET /tasks/:taskId`, `PATCH /tasks/:taskId`, `DELETE /tasks/:taskId`, `POST /task-assignments`, `GET /dashboards/employee`, `GET /dashboards/manager`, `GET /hours-logged`, `POST /hours-logged`, `GET /productivity-metrics`, `GET /goals`, `POST /goals`, `PATCH /goals/:goalId`, and a manager-only RBAC smoke-check route
+- the current implementation includes backend-managed auth signup/login/session endpoints, user/profile endpoints, lifecycle-aware team + join-access endpoints, task + assignment endpoints, manager dashboard + Worker Tracker endpoints, recurring-task creation, notifications, and a manager-only RBAC smoke-check route
 
 ### Data Model Direction
 

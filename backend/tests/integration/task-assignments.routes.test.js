@@ -8,6 +8,7 @@ const { resolveAuthenticatedUser, assignTaskForUser } = vi.hoisted(() => ({
 
 vi.mock("../../src/services/auth.service.js", () => ({
   loginUser: vi.fn(),
+  signupUser: vi.fn(),
   resolveAuthenticatedUser
 }));
 

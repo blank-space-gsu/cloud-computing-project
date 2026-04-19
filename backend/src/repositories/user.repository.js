@@ -1,4 +1,5 @@
 import { getPool } from "../db/pool.js";
+import { TEAM_MEMBERSHIP_STATUSES } from "../constants/teamMemberships.js";
 
 const normalizeDate = (value) => value?.toISOString?.().slice(0, 10) ?? value ?? null;
 
@@ -51,6 +52,7 @@ export const findUserAccessProfileById = async (
       from public.users u
       left join public.team_members tm
         on tm.user_id = u.id
+        and tm.membership_status = '${TEAM_MEMBERSHIP_STATUSES.ACTIVE}'
       left join public.teams t
         on t.id = tm.team_id
       where u.id = $1
@@ -67,6 +69,39 @@ export const findUserAccessProfileById = async (
         u.is_active
     `,
     [userId]
+  );
+
+  return result.rows[0] ? mapAccessProfile(result.rows[0]) : null;
+};
+
+export const findUserAccessProfileByEmail = async (
+  email,
+  { pool = getPool() } = {}
+) => {
+  const result = await pool.query(
+    `
+      select
+        ${userSelectColumns}
+      from public.users u
+      left join public.team_members tm
+        on tm.user_id = u.id
+        and tm.membership_status = '${TEAM_MEMBERSHIP_STATUSES.ACTIVE}'
+      left join public.teams t
+        on t.id = tm.team_id
+      where lower(u.email) = lower($1)
+      group by
+        u.id,
+        u.email,
+        u.first_name,
+        u.last_name,
+        u.job_title,
+        u.date_of_birth,
+        u.address,
+        u.avatar_url,
+        u.app_role,
+        u.is_active
+    `,
+    [email]
   );
 
   return result.rows[0] ? mapAccessProfile(result.rows[0]) : null;
@@ -92,6 +127,7 @@ export const listUsersForDirectory = async (
         from public.team_members scoped_tm
         where scoped_tm.user_id = u.id
           and scoped_tm.team_id = $${values.length}
+          and scoped_tm.membership_status = '${TEAM_MEMBERSHIP_STATUSES.ACTIVE}'
       )
     `);
   }
@@ -121,6 +157,7 @@ export const listUsersForDirectory = async (
       from public.users u
       left join public.team_members tm
         on tm.user_id = u.id
+        and tm.membership_status = '${TEAM_MEMBERSHIP_STATUSES.ACTIVE}'
       left join public.teams t
         on t.id = tm.team_id
       ${whereSql}
@@ -195,6 +232,60 @@ export const upsertUserProfile = async (
       profile.dateOfBirth ?? null,
       profile.address ?? null,
       profile.avatarUrl ?? null,
+      profile.appRole,
+      profile.isActive ?? true
+    ]
+  );
+
+  return mapAccessProfile({
+    ...result.rows[0],
+    teams: []
+  });
+};
+
+export const syncAuthBackedUserProfile = async (
+  profile,
+  { pool = getPool() } = {}
+) => {
+  const result = await pool.query(
+    `
+      insert into public.users (
+        id,
+        email,
+        first_name,
+        last_name,
+        job_title,
+        app_role,
+        is_active
+      )
+      values ($1, $2, $3, $4, $5, $6, $7)
+      on conflict (id) do update
+      set
+        email = excluded.email,
+        first_name = excluded.first_name,
+        last_name = excluded.last_name,
+        job_title = excluded.job_title,
+        app_role = excluded.app_role,
+        is_active = excluded.is_active,
+        updated_at = timezone('utc', now())
+      returning
+        id,
+        email,
+        first_name,
+        last_name,
+        job_title,
+        date_of_birth,
+        address,
+        avatar_url,
+        app_role,
+        is_active
+    `,
+    [
+      profile.id,
+      profile.email,
+      profile.firstName,
+      profile.lastName,
+      profile.jobTitle ?? null,
       profile.appRole,
       profile.isActive ?? true
     ]

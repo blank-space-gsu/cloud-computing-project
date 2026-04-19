@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This file is the contributor handoff guide for the Cloud-Based Workforce Task Management System repository. It explains how to work safely in this repo, where the important backend materials live, and what is already stable versus what is now optional future work.
+This file is the contributor handoff guide for the TaskTrail repository. It explains how to work safely in this repo, where the important backend materials live, and which parts of the old broader product have now been frozen so contributors can stay aligned with the focused task-flow product.
 
 ## Repository Layout
 
@@ -17,9 +17,9 @@ cloud-computing-project/
 - `backend/` contains the Node.js + Express API.
 - `frontend/` contains the static SPA implementation used for the class demo.
 
-## Current Backend Status
+## Current Product Status
 
-Completed:
+Historical foundation phases are complete:
 
 - Phase 0: foundation
 - Phase 1: environment and database schema
@@ -27,16 +27,30 @@ Completed:
 - Phase 3: users and teams
 - Phase 4: tasks and assignment
 - Phase 5: dashboards
-- Phase 6: hours logging
-- Phase 7: productivity metrics
-- Phase 8: goals and quotas
 - Phase 9: hardening and deployment
 
-Optional next work:
+Focused product-pivot modules are also complete:
 
-- task comments and activity history
+- durable memberships and membership history
+- join access, self-join, self-leave, and self-rejoin
+- Worker Tracker MVP
+- Employee Calendar MVP
+- recurring tasks MVP
+- live-product cleanup and retirement of old frozen surfaces
+
+Frozen legacy areas still exist in the backend but are no longer part of the promoted product spine or any active frontend dependency:
+
+- hours logging
+- productivity metrics
+- goals and quotas
+
+Recommended next work:
+
+- task activity timeline UI built on `task_updates`
+- recurring rule editing or pause/resume
 - richer reminder delivery (email/push or scheduled jobs)
 - file attachments
+- calendar polish
 
 ## Backend Stack
 
@@ -134,7 +148,10 @@ supabase db push
 
 ## Current Stable API Surface
 
+Current live-product surface:
+
 - `GET /api/v1/health`
+- `POST /api/v1/auth/signup`
 - `POST /api/v1/auth/login`
 - `GET /api/v1/auth/me`
 - `GET /api/v1/auth/manager-access`
@@ -150,23 +167,32 @@ supabase db push
 - `GET /api/v1/teams/:teamId/members`
 - `POST /api/v1/teams/:teamId/members`
 - `DELETE /api/v1/teams/:teamId/members/:userId`
+- `GET /api/v1/teams/:teamId/join-access`
+- `POST /api/v1/teams/:teamId/join-access/regenerate`
+- `POST /api/v1/team-join`
+- `POST /api/v1/teams/:teamId/members/me/leave`
 - `GET /api/v1/tasks`
 - `POST /api/v1/tasks`
 - `GET /api/v1/tasks/:taskId`
 - `PATCH /api/v1/tasks/:taskId`
 - `DELETE /api/v1/tasks/:taskId`
 - `POST /api/v1/task-assignments`
-- `GET /api/v1/dashboards/employee`
 - `GET /api/v1/dashboards/manager`
+- `GET /api/v1/worker-tracker`
+- `POST /api/v1/recurring-task-rules`
+- `GET /api/v1/notifications`
+- `PATCH /api/v1/notifications/:notificationId/read`
+- `DELETE /api/v1/notifications/:notificationId`
+
+Frozen legacy APIs retained for compatibility only:
+
+- `GET /api/v1/dashboards/employee`
 - `GET /api/v1/hours-logged`
 - `POST /api/v1/hours-logged`
 - `GET /api/v1/productivity-metrics`
 - `GET /api/v1/goals`
 - `POST /api/v1/goals`
 - `PATCH /api/v1/goals/:goalId`
-- `GET /api/v1/notifications`
-- `PATCH /api/v1/notifications/:notificationId/read`
-- `DELETE /api/v1/notifications/:notificationId`
 
 All responses use the standard success/error JSON envelope documented in the backend docs.
 
@@ -187,6 +213,8 @@ These demo accounts are expected to exist after running `npm run seed:demo-users
 - Preserve the consistent API response structure.
 - Prefer student-manageable solutions over unnecessary abstraction.
 - Use phased delivery. Finish code, tests, docs, and progress tracking for one phase before moving to the next.
+- For module-based Codex work, stay inside the declared module scope, inspect relevant files before editing, make the smallest correct change, and separate confirmed facts from assumptions.
+- After each module, report files changed, commands run, validation results, blockers, and the recommended next module.
 
 ## When Adding New Backend Features
 
@@ -199,9 +227,10 @@ These demo accounts are expected to exist after running `npm run seed:demo-users
 
 ## Recommended Next Work
 
-The planned roadmap is complete. If the team wants to extend the project, the best next features are:
+The best next extensions now fit the focused product spine:
 
-- task comments and task activity history
-- file attachments
+- task comments and task activity history UI
+- recurring rule management (edit/pause/resume)
 - richer notification delivery for due and overdue tasks
-- export-ready manager reporting
+- file attachments
+- calendar polish and task-detail refinement

@@ -37,6 +37,7 @@ export function taskCard(task, { onEdit, onAssign, onDelete, onComplete, showAss
   const isOverdue = Boolean(task.isOverdue);
   const isDueSoon = Boolean(task.isDueSoon);
   const isCompact = variant === 'compact';
+  const isManager = variant === 'manager';
 
   const badges = el('div', { className: 'task-badges' },
     el('span', { className: `badge badge-${STATUS_CLASS[task.status] || 'default'}` }, statusLabel(task.status)),
@@ -54,12 +55,24 @@ export function taskCard(task, { onEdit, onAssign, onDelete, onComplete, showAss
       el('h3', { className: 'task-title' }, task.title),
       badges
     ),
-    task.teamName ? el('span', { className: 'task-team-pill' }, task.teamName) : null
+    !isManager && task.teamName ? el('span', { className: 'task-team-pill' }, task.teamName) : null
   );
 
-  const summaryLine = el('div', { className: 'task-summary-line' },
+  const summaryLine = el('div', { className: `task-summary-line${isManager ? ' task-summary-line--manager' : ''}` },
     showAssignee ? el('span', { className: task.assignment ? 'task-assignee' : 'task-unassigned' }, `👤 ${assigneeText}`) : null,
     task.weekStartDate ? el('span', { className: 'task-week' }, `Week of ${formatDate(task.weekStartDate)}`) : null
+  );
+
+  const managerSummaryLine = el('div', { className: 'task-summary-line task-summary-line--manager' },
+    showAssignee
+      ? el('span', { className: `task-summary-token${task.assignment ? '' : ' task-summary-token--warning'}` }, task.assignment ? assigneeText : 'Unassigned')
+      : null,
+    el('span', {
+      className: `task-summary-token${isOverdue ? ' task-summary-token--danger' : isDueSoon ? ' task-summary-token--warning' : ''}`
+    }, task.dueAt
+      ? `Due ${formatDate(task.dueAt)}${task.timeRemainingSeconds != null ? ` · ${formatTimeRemaining(task.timeRemainingSeconds)}` : ''}`
+      : 'No due date'),
+    el('span', { className: 'task-summary-token' }, `Progress ${formatPercent(progressValue)}`)
   );
 
   const progressBlock = el('div', { className: 'task-progress-block' },
@@ -85,6 +98,42 @@ export function taskCard(task, { onEdit, onAssign, onDelete, onComplete, showAss
     metaCell('Status', statusLabel(task.status))
   );
 
+  const managerPrimaryActions = (() => {
+    const actions = el('div', { className: 'task-actions task-actions--manager' });
+    const hasAssignment = Boolean(task.assignment);
+    const editButtonClass = onAssign ? 'btn btn-sm btn-outline' : 'btn btn-sm btn-primary';
+
+    if (onAssign) {
+      actions.appendChild(el(
+        'button',
+        {
+          className: hasAssignment ? 'btn btn-sm btn-outline' : 'btn btn-sm btn-primary',
+          onClick: () => onAssign(task)
+        },
+        hasAssignment ? 'Reassign' : 'Assign'
+      ));
+    }
+    if (onEdit) {
+      actions.appendChild(el('button', { className: editButtonClass, onClick: () => onEdit(task) }, 'Edit'));
+    }
+    if (onComplete && task.status !== 'completed' && task.status !== 'cancelled') {
+      actions.appendChild(el('button', { className: 'btn btn-sm btn-outline', onClick: () => onComplete(task) }, 'Complete'));
+    }
+
+    return actions.childNodes.length ? actions : null;
+  })();
+
+  const managerFooter = el('div', { className: 'task-footer task-footer--manager' },
+    managerPrimaryActions,
+    onDelete
+      ? el('button', {
+          className: 'task-action-link task-action-link--danger',
+          type: 'button',
+          onClick: () => onDelete(task)
+        }, 'Delete')
+      : null
+  );
+
   const footer = el('div', { className: 'task-footer' },
     !isCompact
       ? (task.notes ? el('p', { className: 'task-note' }, task.notes) : el('p', { className: 'task-note task-note--muted' }, 'No notes added yet.'))
@@ -101,12 +150,14 @@ export function taskCard(task, { onEdit, onAssign, onDelete, onComplete, showAss
     })()
   );
 
-  return el('div', { className: `task-card ${isCompact ? 'task-card--compact' : ''} ${isOverdue ? 'overdue' : ''} ${isDueSoon ? 'due-soon' : ''}` },
+  return el('div', { className: `task-card ${isCompact ? 'task-card--compact' : ''} ${isManager ? 'task-card--manager' : ''} ${isOverdue ? 'overdue' : ''} ${isDueSoon ? 'due-soon' : ''}` },
     header,
-    !isCompact && task.description ? el('p', { className: 'task-desc' }, task.description) : null,
-    summaryLine,
-    progressBlock,
-    isCompact ? compactMetrics : metrics,
-    footer
+    isManager ? managerSummaryLine : summaryLine,
+    isManager
+      ? (task.description ? el('p', { className: 'task-desc task-desc--compact' }, task.description) : null)
+      : (!isCompact && task.description ? el('p', { className: 'task-desc' }, task.description) : null),
+    isManager ? null : progressBlock,
+    isManager ? null : (isCompact ? compactMetrics : metrics),
+    isManager ? managerFooter : footer
   );
 }

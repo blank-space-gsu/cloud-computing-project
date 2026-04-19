@@ -13,11 +13,23 @@ Phase 2 uses Supabase Auth as the identity provider, but the frontend talks to b
 
 ## Implemented Endpoints
 
+### `POST /api/v1/auth/signup`
+
+- creates a real Supabase Auth account through the backend
+- requires the caller to choose exactly one global app role: `manager` or `employee`
+- sends the Supabase verification email instead of logging the user in immediately
+- applies the selected app role through trusted server-side admin metadata update
+- syncs the matching `public.users` profile
+- returns a pending-verification payload, not an authenticated session
+- fails with `409 ACCOUNT_ALREADY_EXISTS` for duplicate email signup
+- fails with `429 EMAIL_VERIFICATION_RATE_LIMITED` when the upstream auth provider throttles confirmation-email delivery
+
 ### `POST /api/v1/auth/login`
 
 - authenticates a user with email and password using Supabase Auth
 - returns the access token, refresh token, and the application profile
 - fails with `401 INVALID_CREDENTIALS` for bad credentials
+- fails with `403 EMAIL_NOT_VERIFIED` if the account exists but the email is still unconfirmed
 - fails with `403 ACCOUNT_NOT_PROVISIONED` if the auth account has no `public.users` profile
 
 ### `GET /api/v1/auth/me`
@@ -26,6 +38,7 @@ Phase 2 uses Supabase Auth as the identity provider, but the frontend talks to b
 - verifies the Supabase access token server-side
 - loads the matching application profile from `public.users`
 - returns the authenticated user plus team memberships
+- self-heals missing or stale app-profile rows from auth metadata when possible before failing
 
 ### `GET /api/v1/auth/manager-access`
 
@@ -39,19 +52,24 @@ Phase 2 uses Supabase Auth as the identity provider, but the frontend talks to b
 
 - can authenticate
 - can load their own authenticated profile
+- can sign up only as a globally `employee` user in this phase
 - can load only tasks actively assigned to themselves
 - can update only their own task `status`, `progressPercent`, and `notes`
 - cannot use manager-only endpoints
 - cannot create, delete, or assign tasks
+- can self-join teams only through employee/member join access
 
 ### `manager`
 
 - can authenticate
+- can sign up only as a globally `manager` user in this phase
 - can load their own authenticated profile
 - can pass manager-only RBAC checks
 - can create, update, delete, and assign tasks for teams they manage
 - can view team task lists and employee assignments for manageable teams
 - can access the manager dashboard summary for manageable teams
+- can load and regenerate employee/member and manager join access for teams they manage
+- can self-join teams as a manager only through manager-granting join access
 
 ### `admin`
 
@@ -75,9 +93,30 @@ Phase 2 adds an auth profile sync trigger:
 
 - when a user is created in `auth.users`, a matching row is inserted into `public.users`
 - when a user email or auth metadata changes later, the matching `public.users` row is updated too
-- first name, last name, job title, and app role can be seeded from user metadata
+- first name, last name, and job title are seeded from user metadata
+- the trusted global app role is applied through backend-controlled auth metadata updates
 
 This keeps auth identity and application profile data aligned.
+
+## Production Email Verification Delivery
+
+- TaskTrail’s signup verification flow assumes Supabase email confirmations stay enabled.
+- The backend passes `SUPABASE_AUTH_EMAIL_REDIRECT_TO` into `supabase.auth.signUp(...)`, so production must set that value explicitly to the deployed TaskTrail frontend URL.
+- Arbitrary inbox delivery for signup confirmations depends on Supabase custom SMTP. Supabase’s default email service is intentionally limited and should not be treated as production delivery.
+- TaskTrail’s intended production sender convention is:
+  - visible sender: `TaskTrail Auth <auth@tasktrail.site>`
+  - mail / return-path infrastructure: `auth.tasktrail.site`
+- The repo keeps the auth flow intact, but the SMTP provider itself is configured outside the app in the Supabase dashboard (or Management API), typically using Resend.
+
+## Team Join Access Role Rules
+
+- `team_access_tokens.granted_membership_role` is the source of truth for what a token can create
+- employee/member join access can only activate `member` memberships
+- manager join access can only activate `manager` memberships
+- globally `employee` users cannot consume manager-granting access
+- globally `manager` users cannot consume employee/member join access
+- prior `left` memberships can reactivate through matching join access
+- prior `removed` memberships cannot self-reactivate in this slice
 
 ## Demo Accounts
 

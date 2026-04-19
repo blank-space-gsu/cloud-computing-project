@@ -1,3 +1,7 @@
+import {
+  TEAM_ACCESS_TOKEN_TYPES,
+  TEAM_MEMBERSHIP_STATUSES
+} from "../constants/teamMemberships.js";
 import { getPool } from "../db/pool.js";
 
 const normalizeTimestamp = (value) => value?.toISOString?.() ?? value ?? null;
@@ -7,6 +11,7 @@ const mapTeamSummary = (row) => ({
   name: row.name,
   description: row.description,
   membershipRole: row.membership_role,
+  membershipStatus: row.membership_status ?? null,
   memberCount: Number(row.member_count ?? 0),
   managerCount: Number(row.manager_count ?? 0),
   createdAt: normalizeTimestamp(row.created_at),
@@ -22,8 +27,13 @@ const mapTeamMember = (row) => ({
   jobTitle: row.job_title,
   avatarUrl: row.avatar_url,
   appRole: row.app_role,
+  isActive: row.is_active,
   membershipRole: row.membership_role,
-  isActive: row.is_active
+  membershipStatus: row.membership_status,
+  joinedAt: normalizeTimestamp(row.joined_at),
+  leftAt: normalizeTimestamp(row.left_at),
+  removedAt: normalizeTimestamp(row.removed_at),
+  lastRejoinedAt: normalizeTimestamp(row.last_rejoined_at)
 });
 
 const mapTeamMemberUser = (row) => ({
@@ -36,8 +46,50 @@ const mapTeamMemberUser = (row) => ({
   avatarUrl: row.avatar_url,
   appRole: row.app_role,
   isActive: row.is_active,
-  membershipRole: row.membership_role
+  membershipRole: row.membership_role,
+  membershipStatus: row.membership_status,
+  joinedAt: normalizeTimestamp(row.joined_at),
+  leftAt: normalizeTimestamp(row.left_at),
+  removedAt: normalizeTimestamp(row.removed_at),
+  lastRejoinedAt: normalizeTimestamp(row.last_rejoined_at)
 });
+
+const mapTeamRecord = (row) => ({
+  id: row.id,
+  name: row.name,
+  description: row.description,
+  createdAt: normalizeTimestamp(row.created_at),
+  updatedAt: normalizeTimestamp(row.updated_at)
+});
+
+const mapMembershipRecord = (row) => ({
+  teamId: row.team_id,
+  userId: row.user_id,
+  membershipRole: row.membership_role,
+  membershipStatus: row.membership_status,
+  joinedAt: normalizeTimestamp(row.joined_at),
+  leftAt: normalizeTimestamp(row.left_at),
+  removedAt: normalizeTimestamp(row.removed_at),
+  lastRejoinedAt: normalizeTimestamp(row.last_rejoined_at),
+  createdAt: normalizeTimestamp(row.created_at),
+  updatedAt: normalizeTimestamp(row.updated_at)
+});
+
+const mapTeamAccessToken = (row) => ({
+  id: row.id,
+  teamId: row.team_id,
+  tokenType: row.token_type,
+  grantedMembershipRole: row.granted_membership_role,
+  tokenValue: row.token_value,
+  createdByUserId: row.created_by_user_id,
+  expiresAt: normalizeTimestamp(row.expires_at),
+  revokedAt: normalizeTimestamp(row.revoked_at),
+  isActive: row.is_active,
+  createdAt: normalizeTimestamp(row.created_at),
+  updatedAt: normalizeTimestamp(row.updated_at)
+});
+
+const ACTIVE_MEMBERSHIP_STATUS = TEAM_MEMBERSHIP_STATUSES.ACTIVE;
 
 const teamSummarySelect = `
   t.id,
@@ -46,6 +98,7 @@ const teamSummarySelect = `
   t.created_at,
   t.updated_at,
   viewer.membership_role,
+  viewer.membership_status,
   count(distinct tm.user_id) as member_count,
   count(
     distinct case
@@ -93,8 +146,10 @@ export const listAccessibleTeams = async (
       left join public.team_members viewer
         on viewer.team_id = t.id
         and viewer.user_id = $1
+        and viewer.membership_status = '${ACTIVE_MEMBERSHIP_STATUS}'
       left join public.team_members tm
         on tm.team_id = t.id
+        and tm.membership_status = '${ACTIVE_MEMBERSHIP_STATUS}'
       where ($2::boolean = true or viewer.user_id is not null)
       group by
         t.id,
@@ -102,7 +157,8 @@ export const listAccessibleTeams = async (
         t.description,
         t.created_at,
         t.updated_at,
-        viewer.membership_role
+        viewer.membership_role,
+        viewer.membership_status
       order by t.name asc
     `,
     [requestingUserId, isAdmin]
@@ -123,8 +179,10 @@ export const findAccessibleTeamById = async (
       left join public.team_members viewer
         on viewer.team_id = t.id
         and viewer.user_id = $2
+        and viewer.membership_status = '${ACTIVE_MEMBERSHIP_STATUS}'
       left join public.team_members tm
         on tm.team_id = t.id
+        and tm.membership_status = '${ACTIVE_MEMBERSHIP_STATUS}'
       where
         t.id = $1
         and ($3::boolean = true or viewer.user_id is not null)
@@ -134,7 +192,8 @@ export const findAccessibleTeamById = async (
         t.description,
         t.created_at,
         t.updated_at,
-        viewer.membership_role
+        viewer.membership_role,
+        viewer.membership_status
     `,
     [teamId, requestingUserId, isAdmin]
   );
@@ -142,10 +201,40 @@ export const findAccessibleTeamById = async (
   return result.rows[0] ? mapTeamSummary(result.rows[0]) : null;
 };
 
-export const listMembersForAccessibleTeam = async (
-  { teamId },
+export const findTeamRecordById = async (
+  teamId,
   { pool = getPool() } = {}
 ) => {
+  const result = await pool.query(
+    `
+      select
+        id,
+        name,
+        description,
+        created_at,
+        updated_at
+      from public.teams
+      where id = $1
+    `,
+    [teamId]
+  );
+
+  return result.rows[0] ? mapTeamRecord(result.rows[0]) : null;
+};
+
+export const listMembersForAccessibleTeam = async (
+  { teamId, membershipStatus = ACTIVE_MEMBERSHIP_STATUS },
+  { pool = getPool() } = {}
+) => {
+  const values = [teamId];
+  const statusClause = membershipStatus
+    ? `and tm.membership_status = $2`
+    : "";
+
+  if (membershipStatus) {
+    values.push(membershipStatus);
+  }
+
   const result = await pool.query(
     `
       select
@@ -157,11 +246,17 @@ export const listMembersForAccessibleTeam = async (
         u.avatar_url,
         u.app_role,
         u.is_active,
-        tm.membership_role
+        tm.membership_role,
+        tm.membership_status,
+        tm.joined_at,
+        tm.left_at,
+        tm.removed_at,
+        tm.last_rejoined_at
       from public.team_members tm
       inner join public.users u
         on u.id = tm.user_id
       where tm.team_id = $1
+        ${statusClause}
         and u.is_active = true
       order by
         case
@@ -171,7 +266,7 @@ export const listMembersForAccessibleTeam = async (
         u.first_name asc,
         u.last_name asc
     `,
-    [teamId]
+    values
   );
 
   return result.rows.map(mapTeamMember);
@@ -192,7 +287,12 @@ export const findTeamMemberUserById = async (
         u.avatar_url,
         u.app_role,
         u.is_active,
-        tm.membership_role
+        tm.membership_role,
+        tm.membership_status,
+        tm.joined_at,
+        tm.left_at,
+        tm.removed_at,
+        tm.last_rejoined_at
       from public.team_members tm
       inner join public.users u
         on u.id = tm.user_id
@@ -214,22 +314,42 @@ export const upsertTeamMember = async (
       insert into public.team_members (
         team_id,
         user_id,
-        membership_role
+        membership_role,
+        membership_status,
+        joined_at,
+        left_at,
+        removed_at,
+        last_rejoined_at
       )
-      values ($1, $2, $3)
+      values ($1, $2, $3, '${ACTIVE_MEMBERSHIP_STATUS}', timezone('utc', now()), null, null, null)
       on conflict (team_id, user_id) do update
       set
         membership_role = excluded.membership_role,
+        membership_status = excluded.membership_status,
+        left_at = null,
+        removed_at = null,
+        last_rejoined_at = case
+          when public.team_members.membership_status <> '${ACTIVE_MEMBERSHIP_STATUS}'
+            then timezone('utc', now())
+          else public.team_members.last_rejoined_at
+        end,
         updated_at = timezone('utc', now())
       returning
         team_id,
         user_id,
-        membership_role
+        membership_role,
+        membership_status,
+        joined_at,
+        left_at,
+        removed_at,
+        last_rejoined_at,
+        created_at,
+        updated_at
     `,
     [membership.teamId, membership.userId, membership.membershipRole]
   );
 
-  return result.rows[0];
+  return result.rows[0] ? mapMembershipRecord(result.rows[0]) : null;
 };
 
 export const createTeamRecord = async (
@@ -303,36 +423,302 @@ export const createTeamMember = async (
       insert into public.team_members (
         team_id,
         user_id,
-        membership_role
+        membership_role,
+        membership_status,
+        joined_at
       )
-      values ($1, $2, $3)
+      values ($1, $2, $3, '${ACTIVE_MEMBERSHIP_STATUS}', timezone('utc', now()))
       returning
         team_id,
         user_id,
-        membership_role
+        membership_role,
+        membership_status,
+        joined_at,
+        left_at,
+        removed_at,
+        last_rejoined_at,
+        created_at,
+        updated_at
     `,
     [membership.teamId, membership.userId, membership.membershipRole]
   );
 
-  return result.rows[0] ?? null;
+  return result.rows[0] ? mapMembershipRecord(result.rows[0]) : null;
 };
 
-export const deleteTeamMemberById = async (
-  { teamId, userId },
+export const reactivateTeamMember = async (
+  membership,
   { pool = getPool() } = {}
 ) => {
   const result = await pool.query(
     `
-      delete from public.team_members
+      update public.team_members
+      set
+        membership_role = $3,
+        membership_status = '${ACTIVE_MEMBERSHIP_STATUS}',
+        left_at = null,
+        removed_at = null,
+        last_rejoined_at = timezone('utc', now()),
+        updated_at = timezone('utc', now())
       where team_id = $1
         and user_id = $2
       returning
         team_id,
         user_id,
-        membership_role
+        membership_role,
+        membership_status,
+        joined_at,
+        left_at,
+        removed_at,
+        last_rejoined_at,
+        created_at,
+        updated_at
+    `,
+    [membership.teamId, membership.userId, membership.membershipRole]
+  );
+
+  return result.rows[0] ? mapMembershipRecord(result.rows[0]) : null;
+};
+
+export const markTeamMemberLeft = async (
+  { teamId, userId },
+  { pool = getPool() } = {}
+) => {
+  const result = await pool.query(
+    `
+      update public.team_members
+      set
+        membership_status = '${TEAM_MEMBERSHIP_STATUSES.LEFT}',
+        left_at = timezone('utc', now()),
+        removed_at = null,
+        updated_at = timezone('utc', now())
+      where team_id = $1
+        and user_id = $2
+        and membership_status = '${ACTIVE_MEMBERSHIP_STATUS}'
+      returning
+        team_id,
+        user_id,
+        membership_role,
+        membership_status,
+        joined_at,
+        left_at,
+        removed_at,
+        last_rejoined_at,
+        created_at,
+        updated_at
     `,
     [teamId, userId]
   );
 
-  return result.rows[0] ?? null;
+  return result.rows[0] ? mapMembershipRecord(result.rows[0]) : null;
+};
+
+export const markTeamMemberRemoved = async (
+  { teamId, userId },
+  { pool = getPool() } = {}
+) => {
+  const result = await pool.query(
+    `
+      update public.team_members
+      set
+        membership_status = '${TEAM_MEMBERSHIP_STATUSES.REMOVED}',
+        removed_at = timezone('utc', now()),
+        updated_at = timezone('utc', now())
+      where team_id = $1
+        and user_id = $2
+        and membership_status = '${ACTIVE_MEMBERSHIP_STATUS}'
+      returning
+        team_id,
+        user_id,
+        membership_role,
+        membership_status,
+        joined_at,
+        left_at,
+        removed_at,
+        last_rejoined_at,
+        created_at,
+        updated_at
+    `,
+    [teamId, userId]
+  );
+
+  return result.rows[0] ? mapMembershipRecord(result.rows[0]) : null;
+};
+
+export const insertTeamMembershipEvent = async (
+  event,
+  { pool = getPool() } = {}
+) => {
+  await pool.query(
+    `
+      insert into public.team_membership_events (
+        team_id,
+        user_id,
+        event_type,
+        membership_role,
+        acted_by_user_id,
+        team_access_token_id,
+        metadata
+      )
+      values ($1, $2, $3, $4, $5, $6, $7::jsonb)
+    `,
+    [
+      event.teamId,
+      event.userId,
+      event.eventType,
+      event.membershipRole,
+      event.actedByUserId ?? null,
+      event.teamAccessTokenId ?? null,
+      JSON.stringify(event.metadata ?? {})
+    ]
+  );
+};
+
+export const listActiveTeamAccessTokens = async (
+  { teamId, grantedMembershipRole },
+  { pool = getPool() } = {}
+) => {
+  const values = [teamId];
+  let grantedMembershipRoleClause = "";
+
+  if (grantedMembershipRole) {
+    values.push(grantedMembershipRole);
+    grantedMembershipRoleClause = `and granted_membership_role = $2`;
+  }
+
+  const result = await pool.query(
+    `
+      select
+        id,
+        team_id,
+        token_type,
+        granted_membership_role,
+        token_value,
+        created_by_user_id,
+        expires_at,
+        revoked_at,
+        is_active,
+        created_at,
+        updated_at
+      from public.team_access_tokens
+      where team_id = $1
+        ${grantedMembershipRoleClause}
+        and is_active = true
+        and revoked_at is null
+        and (expires_at is null or expires_at > timezone('utc', now()))
+      order by
+        case
+          when granted_membership_role = 'member' then 0
+          else 1
+        end,
+        case
+          when token_type = '${TEAM_ACCESS_TOKEN_TYPES.JOIN_CODE}' then 0
+          else 1
+        end,
+        created_at desc
+    `,
+    values
+  );
+
+  return result.rows.map(mapTeamAccessToken);
+};
+
+export const createTeamAccessToken = async (
+  accessToken,
+  { pool = getPool() } = {}
+) => {
+  const result = await pool.query(
+    `
+      insert into public.team_access_tokens (
+        team_id,
+        token_type,
+        granted_membership_role,
+        token_value,
+        created_by_user_id,
+        expires_at
+      )
+      values ($1, $2, $3, $4, $5, $6)
+      returning
+        id,
+        team_id,
+        token_type,
+        granted_membership_role,
+        token_value,
+        created_by_user_id,
+        expires_at,
+        revoked_at,
+        is_active,
+        created_at,
+        updated_at
+    `,
+    [
+      accessToken.teamId,
+      accessToken.tokenType,
+      accessToken.grantedMembershipRole,
+      accessToken.tokenValue,
+      accessToken.createdByUserId,
+      accessToken.expiresAt ?? null
+    ]
+  );
+
+  return result.rows[0] ? mapTeamAccessToken(result.rows[0]) : null;
+};
+
+export const revokeActiveTeamAccessTokens = async (
+  { teamId, grantedMembershipRole },
+  { pool = getPool() } = {}
+) => {
+  const values = [teamId];
+  let grantedMembershipRoleClause = "";
+
+  if (grantedMembershipRole) {
+    values.push(grantedMembershipRole);
+    grantedMembershipRoleClause = `and granted_membership_role = $2`;
+  }
+
+  const result = await pool.query(
+    `
+      update public.team_access_tokens
+      set
+        is_active = false,
+        revoked_at = timezone('utc', now()),
+        updated_at = timezone('utc', now())
+      where team_id = $1
+        ${grantedMembershipRoleClause}
+        and is_active = true
+      returning id
+    `,
+    values
+  );
+
+  return result.rowCount;
+};
+
+export const findTeamAccessTokenByValue = async (
+  { tokenType, tokenValue },
+  { pool = getPool() } = {}
+) => {
+  const result = await pool.query(
+    `
+      select
+        id,
+        team_id,
+        token_type,
+        granted_membership_role,
+        token_value,
+        created_by_user_id,
+        expires_at,
+        revoked_at,
+        is_active,
+        created_at,
+        updated_at
+      from public.team_access_tokens
+      where token_type = $1
+        and token_value = $2
+      limit 1
+    `,
+    [tokenType, tokenValue]
+  );
+
+  return result.rows[0] ? mapTeamAccessToken(result.rows[0]) : null;
 };

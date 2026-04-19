@@ -5,26 +5,25 @@
 Stable today:
 
 - backend health check
+- signup with global app-role selection (`manager` or `employee`)
 - login form
 - authenticated current-user loading
 - role-aware UI branching for employee vs manager
 - user profile loading through `/users/me`
 - self-profile editing through `PATCH /users/me`
-- manager avatar updates through `PATCH /users/:userId/avatar`
 - team list and team roster loading
 - team creation and editing
-- persistent team membership changes
-- people directory loading for manager workflows
+- manager join-access loading and regeneration
+- employee self-join and self-leave
+- persistent team membership changes with active-roster filtering
 - task creation for managers
 - task assignment for managers
+- Worker Tracker drilldown for managers
 - employee task list loading
 - employee task status and progress updates
-- employee dashboard widgets
-- manager dashboard cards and charts
-- hours logging forms
-- hours summary widgets
-- productivity summary cards and trend charts
-- goals and quota progress widgets
+- employee calendar loading from due-dated assigned tasks
+- recurring task rule creation
+- manager dashboard attention cards
 - notification list, read, and dismiss flows
 - global loading and error handling based on the shared response envelope
 
@@ -32,6 +31,7 @@ Still in progress:
 
 - binary profile-photo upload infrastructure is not implemented; avatar support is URL-based today
 - due-soon task notifications are generated lazily when `/notifications` is read instead of through a background scheduler
+- legacy backend endpoints for hours, productivity, and goals remain available, but they are retired from the live frontend product path and no active screen depends on them
 
 ## Base API Settings
 
@@ -44,14 +44,15 @@ Still in progress:
 | Method | Path | Use now? | Notes |
 | --- | --- | --- | --- |
 | `GET` | `/api/v1/health` | Yes | Useful for startup or API availability checks |
+| `POST` | `/api/v1/auth/signup` | Yes | Self-service account creation with global `appRole` selection |
 | `POST` | `/api/v1/auth/login` | Yes | Main login form submission endpoint |
 | `GET` | `/api/v1/auth/me` | Yes | Load the logged-in user after storing tokens |
 | `GET` | `/api/v1/auth/manager-access` | Optional | Manager-role verification endpoint for protected manager UI checks |
 | `GET` | `/api/v1/users/me` | Yes | User-profile namespaced endpoint |
 | `PATCH` | `/api/v1/users/me` | Yes | Self-editable profile fields: `firstName`, `lastName`, `jobTitle`, `dateOfBirth`, `address` |
 | `GET` | `/api/v1/users` | Yes | Manager/admin people directory with optional `role`, `teamId`, `search`, and `includeInactive` filters |
-| `POST` | `/api/v1/users` | Yes | Manager/admin employee creation flow with auth user, app profile, and team membership |
-| `PATCH` | `/api/v1/users/:userId/avatar` | Yes | Manager/admin avatar URL update endpoint |
+| `POST` | `/api/v1/users` | Legacy | Backend exists, but the live frontend does not promote employee creation |
+| `PATCH` | `/api/v1/users/:userId/avatar` | Legacy | Backend exists, but the live frontend does not promote avatar management |
 | `GET` | `/api/v1/teams` | Yes | Load visible teams for the authenticated user |
 | `POST` | `/api/v1/teams` | Yes | Manager/admin team creation endpoint |
 | `GET` | `/api/v1/teams/:teamId` | Yes | Load team detail within user scope |
@@ -59,35 +60,83 @@ Still in progress:
 | `GET` | `/api/v1/teams/:teamId/members` | Yes | Load the basic roster for a visible team |
 | `POST` | `/api/v1/teams/:teamId/members` | Yes | Manager/admin team membership add endpoint |
 | `DELETE` | `/api/v1/teams/:teamId/members/:userId` | Yes | Manager/admin team membership remove endpoint |
+| `GET` | `/api/v1/teams/:teamId/join-access` | Yes | Load current employee and manager join access for a manageable team |
+| `POST` | `/api/v1/teams/:teamId/join-access/regenerate` | Yes | Rotate either employee or manager join access for a manageable team |
+| `POST` | `/api/v1/team-join` | Yes | Join via code or invite token; backend enforces whether the token grants member or manager access |
+| `POST` | `/api/v1/teams/:teamId/members/me/leave` | Yes | Employee self-leave with lifecycle-safe membership handling |
 | `GET` | `/api/v1/tasks` | Yes | Load scoped task lists with filters and pagination metadata |
 | `POST` | `/api/v1/tasks` | Yes | Manager/admin task creation endpoint |
 | `GET` | `/api/v1/tasks/:taskId` | Yes | Load task detail within actor scope |
 | `PATCH` | `/api/v1/tasks/:taskId` | Yes | Manager full update or employee status/progress update |
 | `DELETE` | `/api/v1/tasks/:taskId` | Yes | Manager/admin task deletion endpoint |
 | `POST` | `/api/v1/task-assignments` | Yes | Manager/admin task assignment endpoint |
-| `GET` | `/api/v1/dashboards/employee` | Yes | Load employee dashboard summary cards and charts |
-| `GET` | `/api/v1/dashboards/manager` | Yes | Load manager dashboard summary cards and charts |
-| `GET` | `/api/v1/hours-logged` | Yes | Load scoped hours entries plus weekly/monthly totals |
-| `POST` | `/api/v1/hours-logged` | Yes | Create a new hours log entry for the authenticated user |
-| `GET` | `/api/v1/productivity-metrics` | Yes | Load role-aware productivity rollups and trend data |
-| `GET` | `/api/v1/goals` | Yes | Load visible goals plus quota summary metadata |
-| `POST` | `/api/v1/goals` | Yes | Manager/admin goal creation endpoint |
-| `PATCH` | `/api/v1/goals/:goalId` | Yes | Manager/admin goal update endpoint |
+| `GET` | `/api/v1/dashboards/employee` | Legacy | Retained for compatibility; the live frontend no longer promotes an employee dashboard route |
+| `GET` | `/api/v1/dashboards/manager` | Yes | Load the manager attention dashboard |
+| `GET` | `/api/v1/worker-tracker` | Yes | Load manager Worker Tracker team/employee/task drilldown data |
+| `POST` | `/api/v1/recurring-task-rules` | Yes | Create recurring rules that generate real task instances |
+| `GET` | `/api/v1/hours-logged` | Legacy | Frozen backend surface, not part of the live frontend flow |
+| `POST` | `/api/v1/hours-logged` | Legacy | Frozen backend surface, not part of the live frontend flow |
+| `GET` | `/api/v1/productivity-metrics` | Legacy | Frozen backend surface, retained only for compatibility; no active frontend screen depends on it |
+| `GET` | `/api/v1/goals` | Legacy | Frozen backend surface, not part of the live frontend flow |
+| `POST` | `/api/v1/goals` | Legacy | Frozen backend surface, not part of the live frontend flow |
+| `PATCH` | `/api/v1/goals/:goalId` | Legacy | Frozen backend surface, not part of the live frontend flow |
 | `GET` | `/api/v1/notifications` | Yes | Load persistent notifications with unread count |
 | `PATCH` | `/api/v1/notifications/:notificationId/read` | Yes | Mark a notification as read |
 | `DELETE` | `/api/v1/notifications/:notificationId` | Yes | Dismiss a notification |
 
 ## New Integration Notes
 
+- `POST /api/v1/auth/signup` accepts `email`, `password`, `firstName`, `lastName`, optional `jobTitle`, and required `appRole`.
+- Signup now returns a pending-verification payload:
+  - `data.email`
+  - `data.appRole`
+  - `data.verificationRequired`
+  - `data.verificationEmailSent`
+  - `data.emailRedirectTo`
+- Signup does **not** return an authenticated session.
+- The frontend should show a clear "check your inbox" state after signup and should not try to store access or refresh tokens from the signup response.
+- In production, expect `data.emailRedirectTo` to be the deployed TaskTrail origin such as `https://tasktrail.site`.
+- `POST /api/v1/auth/login` returns `403 EMAIL_NOT_VERIFIED` when the account exists but the email has not been confirmed yet.
+- `POST /api/v1/auth/signup` can also return `429 EMAIL_VERIFICATION_RATE_LIMITED` if Supabase / the configured SMTP provider throttles confirmation-email delivery.
+- `auth/me` and login now self-heal missing or stale app-profile rows from Supabase-auth metadata when possible, then return the canonical app profile.
 - `auth/me` and `users/me` now include `dateOfBirth`, `address`, and `avatarUrl` when available.
 - `teams/:teamId/members` now includes `email`, `avatarUrl`, and `isActive` for roster/detail modals.
 - Avatar support is URL-based in this phase. The backend stores `avatarUrl`; it does not accept multipart file uploads.
 - `POST /api/v1/users` always creates `appRole: "employee"` from the backend side. The frontend should not send or expect arbitrary role creation.
 - Manager membership promotion/demotion is intentionally stricter than normal membership edits. Non-admin managers can add and remove regular members, but manager memberships remain admin-controlled.
+- `GET /api/v1/teams/:teamId/join-access` now returns:
+  - `data.joinAccess` as the compatibility alias for employee/member access
+  - `data.employeeJoinAccess`
+  - `data.managerJoinAccess`
+- Each join-access object includes `membershipRole`, `joinCode`, `inviteToken`, and `inviteUrl`.
+- `POST /api/v1/teams/:teamId/join-access/regenerate` accepts an optional body:
+
+```json
+{
+  "membershipRole": "manager"
+}
+```
+
+- Omit `membershipRole` to rotate employee/member access.
+- `POST /api/v1/team-join` still accepts exactly one of `joinCode` or `inviteToken`.
+- The backend decides whether the join creates a `member` or `manager` membership from the stored token grant, not from the request body or URL query parameters.
+- Employee join access only works for globally `employee` users.
+- Manager join access only works for globally `manager` or `admin` users.
 - `GET /api/v1/notifications` returns `data.notifications` and `data.unreadCount`.
 - Due-soon notifications are generated lazily when the notifications list is loaded, then persisted with deduping. Team-added notifications are created immediately when a membership is added.
 
-## Login Flow
+## Signup and Login Flow
+
+### Signup
+
+1. submit the signup form to `POST /api/v1/auth/signup`
+2. include exactly one global `appRole`: `manager` or `employee`
+3. if successful, do **not** store tokens
+4. show a "check your inbox to verify your email" state
+5. after the user verifies their email, route them to the normal login flow
+6. if login returns `EMAIL_NOT_VERIFIED`, keep them in the verification-needed state instead of treating it like a bad password
+
+### Login
 
 1. submit the login form to `POST /api/v1/auth/login`
 2. if successful, store `data.session.accessToken`
@@ -124,6 +173,31 @@ const result = await response.json();
 if (result.success) {
   localStorage.setItem("accessToken", result.data.session.accessToken);
   localStorage.setItem("refreshToken", result.data.session.refreshToken);
+}
+```
+
+### Signup
+
+```js
+const response = await fetch("http://localhost:4000/api/v1/auth/signup", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({
+    email: "employee.new@tasktrail.site",
+    password: "example-password",
+    firstName: "Ethan",
+    lastName: "Employee",
+    appRole: "employee"
+  })
+});
+
+const result = await response.json();
+
+if (result.success) {
+  console.log(result.data.verificationRequired); // true
+  console.log(result.data.emailRedirectTo); // e.g. https://tasktrail.site in production
 }
 ```
 
@@ -267,6 +341,9 @@ const response = await fetch(
 
 const result = await response.json();
 ```
+
+> Legacy note:
+> The remaining sections below for employee dashboard, hours, productivity, and goals are retained as compatibility references for backend surfaces that still exist, but they are no longer part of the promoted live frontend product flow.
 
 ### Hours Logged List
 
@@ -474,14 +551,17 @@ const result = await response.json();
 - RBAC middleware foundation
 - normalized MVP schema
 - users and teams endpoints
+- self-profile update endpoint
+- team create/update/membership management endpoints
 - task CRUD and assignment endpoints
 - employee and manager dashboard endpoints
 - hours logging create/list endpoints
 - productivity metrics endpoint
 - goals endpoints
+- notification list/read/dismiss endpoints
 
 ### Optional Next Enhancements
 
 - task comments and activity history
-- notifications and reminders
+- scheduled/email reminder delivery beyond the current in-app notification endpoints
 - export-ready reporting

@@ -2,15 +2,19 @@ import { sendSuccess } from "../utils/apiResponse.js";
 import {
   addTeamMemberForUser,
   createTeamForUser,
+  getTeamJoinAccessForUser,
   getTeamByIdForUser,
+  leaveTeamForUser,
   listTeamMembersForUser,
   listTeamsForUser,
+  regenerateTeamJoinAccessForUser,
   removeTeamMemberForUser,
   updateTeamForUser
 } from "../services/team.service.js";
 import {
   addTeamMemberBodySchema,
   createTeamBodySchema,
+  regenerateTeamJoinAccessBodySchema,
   teamIdParamsSchema,
   teamMemberParamsSchema,
   updateTeamBodySchema
@@ -99,6 +103,41 @@ export const removeTeamMemberHandler = async (request, response) => {
 
   return sendSuccess(response, {
     message: "Team member removed successfully.",
+    data: result
+  });
+};
+
+export const getTeamJoinAccessHandler = async (request, response) => {
+  const { teamId } = teamIdParamsSchema.parse(request.params);
+  const result = await getTeamJoinAccessForUser(request.auth.user, teamId);
+
+  return sendSuccess(response, {
+    message: "Team join access loaded successfully.",
+    data: result
+  });
+};
+
+export const regenerateTeamJoinAccessHandler = async (request, response) => {
+  const { teamId } = teamIdParamsSchema.parse(request.params);
+  const payload = regenerateTeamJoinAccessBodySchema.parse(request.body ?? {});
+  const result = await regenerateTeamJoinAccessForUser(
+    request.auth.user,
+    teamId,
+    payload
+  );
+
+  return sendSuccess(response, {
+    message: "Team join access regenerated successfully.",
+    data: result
+  });
+};
+
+export const leaveMyTeamHandler = async (request, response) => {
+  const { teamId } = teamIdParamsSchema.parse(request.params);
+  const result = await leaveTeamForUser(request.auth.user, teamId);
+
+  return sendSuccess(response, {
+    message: "Team membership left successfully.",
     data: result
   });
 };
