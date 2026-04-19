@@ -13,6 +13,44 @@ Why this is the best fit for the project:
 
 The database still stays in Supabase, because the project requirement is Supabase PostgreSQL.
 
+## Backend Docker Image
+
+TaskTrail’s backend can also be packaged as a single production container for Oracle or any other container host. This repo now includes:
+
+- Dockerfile: [backend/Dockerfile](/Users/admin/Documents/GitHub/cloud-computing-project/backend/Dockerfile)
+- Docker ignore rules: [backend/.dockerignore](/Users/admin/Documents/GitHub/cloud-computing-project/backend/.dockerignore)
+
+Build the image from the repository root:
+
+```bash
+docker build -t tasktrail-backend ./backend
+```
+
+Run it with runtime environment variables:
+
+```bash
+docker run --rm -p 4000:4000 \
+  -e NODE_ENV=production \
+  -e PORT=4000 \
+  -e FRONTEND_APP_ORIGIN=https://tasktrail.site \
+  -e SUPABASE_AUTH_EMAIL_REDIRECT_TO=https://tasktrail.site \
+  -e SUPABASE_URL=your-supabase-url \
+  -e SUPABASE_ANON_KEY=your-supabase-anon-key \
+  -e SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key \
+  -e SUPABASE_JWT_SECRET=your-supabase-jwt-secret \
+  -e DATABASE_URL=your-supabase-pooler-url \
+  -e DATABASE_SSL_REJECT_UNAUTHORIZED=false \
+  tasktrail-backend
+```
+
+Notes:
+
+- The container uses `npm start`, which runs `node src/server.js`.
+- The image installs production dependencies only.
+- Secrets must be injected at runtime; do not bake `.env` into the image.
+- `NODE_ENV=production` requires real HTTPS frontend origins and a real `SUPABASE_AUTH_EMAIL_REDIRECT_TO`, so localhost-only values are intentionally rejected in that mode.
+- `PORT` defaults to `4000` and the image exposes `4000`.
+
 ## Deployment Artifacts in This Repo
 
 - root Blueprint file: `/Users/admin/Documents/GitHub/cloud-computing-project/render.yaml`

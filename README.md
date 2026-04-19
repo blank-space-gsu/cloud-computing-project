@@ -109,6 +109,31 @@ npm install
 npm run dev
 ```
 
+Backend Docker image:
+
+```bash
+docker build -t tasktrail-backend ./backend
+```
+
+Run the backend container in production mode with runtime env vars:
+
+```bash
+docker run --rm -p 4000:4000 \
+  -e NODE_ENV=production \
+  -e PORT=4000 \
+  -e FRONTEND_APP_ORIGIN=https://tasktrail.site \
+  -e SUPABASE_AUTH_EMAIL_REDIRECT_TO=https://tasktrail.site \
+  -e SUPABASE_URL=your-supabase-url \
+  -e SUPABASE_ANON_KEY=your-supabase-anon-key \
+  -e SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key \
+  -e SUPABASE_JWT_SECRET=your-supabase-jwt-secret \
+  -e DATABASE_URL=your-supabase-pooler-url \
+  -e DATABASE_SSL_REJECT_UNAUTHORIZED=false \
+  tasktrail-backend
+```
+
+For Oracle container deployment, keep secrets out of the image and inject the same runtime variables through the platform. Use [backend/.env.example](backend/.env.example) as the source-of-truth template for required values.
+
 Frontend:
 
 ```bash
