@@ -24,13 +24,11 @@ Stable today:
 - employee calendar loading from due-dated assigned tasks
 - recurring task rule creation
 - manager dashboard attention cards
-- notification list, read, and dismiss flows
 - global loading and error handling based on the shared response envelope
 
 Still in progress:
 
 - binary profile-photo upload infrastructure is not implemented; avatar support is URL-based today
-- due-soon task notifications are generated lazily when `/notifications` is read instead of through a background scheduler
 - legacy backend endpoints for hours, productivity, and goals remain available, but they are retired from the live frontend product path and no active screen depends on them
 
 ## Base API Settings
@@ -80,9 +78,6 @@ Still in progress:
 | `GET` | `/api/v1/goals` | Legacy | Frozen backend surface, not part of the live frontend flow |
 | `POST` | `/api/v1/goals` | Legacy | Frozen backend surface, not part of the live frontend flow |
 | `PATCH` | `/api/v1/goals/:goalId` | Legacy | Frozen backend surface, not part of the live frontend flow |
-| `GET` | `/api/v1/notifications` | Yes | Load persistent notifications with unread count |
-| `PATCH` | `/api/v1/notifications/:notificationId/read` | Yes | Mark a notification as read |
-| `DELETE` | `/api/v1/notifications/:notificationId` | Yes | Dismiss a notification |
 
 ## New Integration Notes
 
@@ -122,8 +117,6 @@ Still in progress:
 - The backend decides whether the join creates a `member` or `manager` membership from the stored token grant, not from the request body or URL query parameters.
 - Employee join access only works for globally `employee` users.
 - Manager join access only works for globally `manager` or `admin` users.
-- `GET /api/v1/notifications` returns `data.notifications` and `data.unreadCount`.
-- Due-soon notifications are generated lazily when the notifications list is loaded, then persisted with deduping. Team-added notifications are created immediately when a membership is added.
 
 ## Signup and Login Flow
 
@@ -558,10 +551,9 @@ const result = await response.json();
 - hours logging create/list endpoints
 - productivity metrics endpoint
 - goals endpoints
-- notification list/read/dismiss endpoints
 
 ### Optional Next Enhancements
 
 - task comments and activity history
-- scheduled/email reminder delivery beyond the current in-app notification endpoints
+- scheduled/email reminder delivery
 - export-ready reporting

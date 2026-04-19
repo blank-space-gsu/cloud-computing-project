@@ -432,23 +432,23 @@ Stores append-only task activity history for creation, assignment, progress upda
 - index on (`task_id`, `created_at desc`)
 - index on (`updated_by_user_id`, `created_at desc`)
 
-### `public.notifications`
+### `public.notifications` (historical / unused)
 
 **Purpose**
-Stores user-targeted in-app notifications for team membership changes and task due reminders.
+Retained in the schema as a historical artifact from the removed in-app notifications feature. Current runtime code no longer reads from or writes to this table.
 
 | Column | Type | Null | Default | Notes |
 | --- | --- | --- | --- | --- |
 | `id` | `uuid` | No | `extensions.gen_random_uuid()` | Primary key |
 | `user_id` | `uuid` | No | none | Notification recipient |
-| `type` | `text` | No | none | Notification type such as `team_added`, `task_due_soon`, or `task_overdue` |
+| `type` | `text` | No | none | Historical notification type such as `team_added`, `task_due_soon`, or `task_overdue` |
 | `title` | `text` | No | none | Short notification headline |
 | `message` | `text` | No | none | Notification body copy |
 | `task_id` | `uuid` | Yes | `null` | Optional task reference |
 | `team_id` | `uuid` | Yes | `null` | Optional team reference |
-| `dedupe_key` | `text` | Yes | `null` | Optional idempotency key for lazy-generated due alerts |
-| `read_at` | `timestamptz` | Yes | `null` | Set when the user opens or marks the notification read |
-| `dismissed_at` | `timestamptz` | Yes | `null` | Set when the user archives the notification |
+| `dedupe_key` | `text` | Yes | `null` | Historical idempotency key for retired due-alert generation |
+| `read_at` | `timestamptz` | Yes | `null` | Previously set when a user opened or marked a notification as read |
+| `dismissed_at` | `timestamptz` | Yes | `null` | Previously set when a user archived a notification |
 | `created_at` | `timestamptz` | No | `timezone('utc', now())` | Audit timestamp |
 | `updated_at` | `timestamptz` | No | `timezone('utc', now())` | Audit timestamp |
 

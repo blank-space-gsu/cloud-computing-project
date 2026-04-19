@@ -14,7 +14,7 @@ Manager experience:
 - Worker Tracker as the main drilldown surface
 - Tasks for direct task creation, assignment, and editing
 - Teams for team management and join access
-- Profile for lightweight account and notification context
+- Profile for lightweight account context
 
 Employee experience:
 
@@ -22,7 +22,7 @@ Employee experience:
 - My Tasks for assigned work, progress, and completion
 - Calendar for due-date visibility across active teams
 - Teams for membership visibility and leave flow
-- Profile for lightweight account and notification context
+- Profile for lightweight account context
 
 ### Optional Next Enhancements
 
@@ -52,7 +52,6 @@ Current frontend experience:
 - Manager join-access controls for team codes and invite links
 - Employee join, leave, and rejoin flow
 - Backend-backed self-profile editing for safe personal info fields
-- Backend-backed notification list, read, and dismiss actions
 - Responsive TaskTrail UI using shared components and hash-based routing
 
 Frontend notes:
@@ -213,9 +212,6 @@ The frontend currently uses the following stable backend surface:
 - Manager dashboard endpoint: `GET /api/v1/dashboards/manager`
 - Worker Tracker endpoint: `GET /api/v1/worker-tracker`
 - Recurring task rule create endpoint: `POST /api/v1/recurring-task-rules`
-- Notifications endpoint: `GET /api/v1/notifications`
-- Notification read endpoint: `PATCH /api/v1/notifications/:notificationId/read`
-- Notification dismiss endpoint: `DELETE /api/v1/notifications/:notificationId`
 
 Legacy frozen endpoints for hours, productivity, and goals still exist in the backend, but they are no longer part of the promoted frontend product flow.
 

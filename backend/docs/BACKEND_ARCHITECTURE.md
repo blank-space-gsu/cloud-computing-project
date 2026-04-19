@@ -95,7 +95,7 @@ This keeps HTTP concerns out of business logic and keeps database queries out of
 - managers can access team productivity metrics and individual productivity metrics for users in manageable teams
 - employees can view team-scoped goals for their teams and user-scoped goals assigned to them
 - managers can create and update team-scoped or employee-scoped goals for teams they manage
-- the current implementation includes backend-managed auth signup/login/session endpoints, user/profile endpoints, lifecycle-aware team + join-access endpoints, task + assignment endpoints, manager dashboard + Worker Tracker endpoints, recurring-task creation, notifications, and a manager-only RBAC smoke-check route
+- the current implementation includes backend-managed auth signup/login/session endpoints, user/profile endpoints, lifecycle-aware team + join-access endpoints, task + assignment endpoints, manager dashboard + Worker Tracker endpoints, recurring-task creation, and a manager-only RBAC smoke-check route
 
 ### Data Model Direction
 
@@ -112,7 +112,7 @@ Optional post-roadmap enhancements:
 
 - task comments and activity history
 - file attachments
-- reminder notifications
+- task reminder delivery
 - export-ready reporting
 
 ### Deployment Choice

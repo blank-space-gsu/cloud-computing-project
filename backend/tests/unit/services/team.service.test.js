@@ -142,7 +142,7 @@ describe("team service", () => {
     });
   });
 
-  it("adds a member and creates a team-added notification", async () => {
+  it("adds a member to a team", async () => {
     const findTeam = vi.fn().mockResolvedValue(sampleTeam);
     const findMember = vi
       .fn()
@@ -157,7 +157,6 @@ describe("team service", () => {
       isActive: true
     });
     const insertTeamMember = vi.fn().mockResolvedValue({});
-    const notifyTeamAdded = vi.fn().mockResolvedValue({});
     const recordMembershipEvent = vi.fn().mockResolvedValue({});
     const runTransaction = vi.fn(async (work) => work({}));
 
@@ -168,15 +167,14 @@ describe("team service", () => {
         userId: "member-1",
         membershipRole: "member"
       },
-      {
-        findTeam,
-        findMember,
-        findUser,
-        insertTeamMember,
-        notifyTeamAdded,
-        recordMembershipEvent,
-        runTransaction
-      }
+        {
+          findTeam,
+          findMember,
+          findUser,
+          insertTeamMember,
+          recordMembershipEvent,
+          runTransaction
+        }
     );
 
     expect(insertTeamMember).toHaveBeenCalledWith({
@@ -184,11 +182,6 @@ describe("team service", () => {
       userId: "member-1",
       membershipRole: "member"
     }, { pool: {} });
-    expect(notifyTeamAdded).toHaveBeenCalledWith({
-      userId: "member-1",
-      teamId: sampleTeam.id,
-      teamName: sampleTeam.name
-    });
     expect(result.member.fullName).toBe("Ethan Employee");
   });
 
@@ -239,7 +232,6 @@ describe("team service", () => {
     });
     const reactivateMember = vi.fn().mockResolvedValue({});
     const recordMembershipEvent = vi.fn().mockResolvedValue({});
-    const notifyTeamAdded = vi.fn().mockResolvedValue({});
     const runTransaction = vi.fn(async (work) => work({}));
 
     const result = await addTeamMemberForUser(
@@ -255,7 +247,6 @@ describe("team service", () => {
         findUser,
         reactivateMember,
         recordMembershipEvent,
-        notifyTeamAdded,
         runTransaction
       }
     );

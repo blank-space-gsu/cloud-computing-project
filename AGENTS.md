@@ -180,9 +180,6 @@ Current live-product surface:
 - `GET /api/v1/dashboards/manager`
 - `GET /api/v1/worker-tracker`
 - `POST /api/v1/recurring-task-rules`
-- `GET /api/v1/notifications`
-- `PATCH /api/v1/notifications/:notificationId/read`
-- `DELETE /api/v1/notifications/:notificationId`
 
 Frozen legacy APIs retained for compatibility only:
 
@@ -231,6 +228,6 @@ The best next extensions now fit the focused product spine:
 
 - task comments and task activity history UI
 - recurring rule management (edit/pause/resume)
-- richer notification delivery for due and overdue tasks
+- reminder delivery for due and overdue tasks
 - file attachments
 - calendar polish and task-detail refinement

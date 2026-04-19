@@ -12,7 +12,6 @@ import {
 } from "../repositories/user.repository.js";
 import { createAppError } from "../utils/appError.js";
 import { listTeamsForUser } from "./team.service.js";
-import { createTeamAddedNotification } from "./notification.service.js";
 
 const SELF_EDITABLE_FIELDS = new Set([
   "firstName",
@@ -210,8 +209,7 @@ export const createEmployeeForUser = async (
     supabaseClient = getServiceRoleSupabaseClient(),
     saveProfile = upsertUserProfile,
     addTeamMembership = createTeamMember,
-    findUser = findUserAccessProfileById,
-    notifyTeamAdded = createTeamAddedNotification
+    findUser = findUserAccessProfileById
   } = {}
 ) => {
   ensurePrivilegedUser(
@@ -220,7 +218,7 @@ export const createEmployeeForUser = async (
     "Only managers and admins can create employees."
   );
 
-  const team = await ensureTeamManageable(authUser, input.teamId, { findTeam });
+  await ensureTeamManageable(authUser, input.teamId, { findTeam });
 
   let createdAuthUser;
 
@@ -244,12 +242,6 @@ export const createEmployeeForUser = async (
       teamId: input.teamId,
       userId: createdAuthUser.id,
       membershipRole: "member"
-    });
-
-    await notifyTeamAdded({
-      userId: createdAuthUser.id,
-      teamId: input.teamId,
-      teamName: team.name
     });
   } catch (error) {
     if (createdAuthUser?.id) {

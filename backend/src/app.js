@@ -9,7 +9,6 @@ import dashboardsRouter from "./routes/dashboards.routes.js";
 import goalsRouter from "./routes/goals.routes.js";
 import healthRouter from "./routes/health.routes.js";
 import hoursLoggedRouter from "./routes/hoursLogged.routes.js";
-import notificationsRouter from "./routes/notifications.routes.js";
 import productivityRouter from "./routes/productivity.routes.js";
 import recurringTaskRulesRouter from "./routes/recurringTaskRules.routes.js";
 import taskAssignmentsRouter from "./routes/taskAssignments.routes.js";
@@ -51,7 +50,6 @@ app.use(`${env.API_PREFIX}/dashboards`, dashboardsRouter);
 app.use(`${env.API_PREFIX}/hours-logged`, hoursLoggedRouter);
 app.use(`${env.API_PREFIX}/productivity-metrics`, productivityRouter);
 app.use(`${env.API_PREFIX}/goals`, goalsRouter);
-app.use(`${env.API_PREFIX}/notifications`, notificationsRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

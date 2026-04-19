@@ -91,7 +91,7 @@ describe("user service", () => {
     });
   });
 
-  it("creates an employee auth user, profile, membership, and notification", async () => {
+  it("creates an employee auth user, profile, and membership", async () => {
     const findTeam = vi.fn().mockResolvedValue({
       id: "44444444-4444-4444-8444-444444444444",
       name: "Operations Team",
@@ -114,7 +114,6 @@ describe("user service", () => {
     };
     const saveProfile = vi.fn().mockResolvedValue({});
     const addTeamMembership = vi.fn().mockResolvedValue({});
-    const notifyTeamAdded = vi.fn().mockResolvedValue({});
     const findUser = vi.fn().mockResolvedValue({
       id: "55555555-5555-4555-8555-555555555555",
       email: "new.employee@cloudcomputing.local",
@@ -142,8 +141,7 @@ describe("user service", () => {
         supabaseClient,
         saveProfile,
         addTeamMembership,
-        findUser,
-        notifyTeamAdded
+        findUser
       }
     );
 
@@ -158,11 +156,6 @@ describe("user service", () => {
       teamId: "44444444-4444-4444-8444-444444444444",
       userId: "55555555-5555-4555-8555-555555555555",
       membershipRole: "member"
-    });
-    expect(notifyTeamAdded).toHaveBeenCalledWith({
-      userId: "55555555-5555-4555-8555-555555555555",
-      teamId: "44444444-4444-4444-8444-444444444444",
-      teamName: "Operations Team"
     });
     expect(result.email).toBe("new.employee@cloudcomputing.local");
   });

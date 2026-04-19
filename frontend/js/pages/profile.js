@@ -4,11 +4,10 @@ import * as api from '../api.js';
 import { renderHeader } from '../components/header.js';
 import { showLoading, hideLoading } from '../components/loading.js';
 import { showError, showSuccess } from '../components/toast.js';
-import { buildNotificationArchiveSection } from '../components/notifications.js';
 import { capitalize } from '../utils/format.js';
 import { getVisibleTeams, selectPreferredTeam, sortTeamsForDemo } from '../utils/teams.js';
 
-export default async function profilePage(container, params = {}) {
+export default async function profilePage(container) {
   const user = getUser();
   renderHeader('Profile', 'Your account');
   clearElement(container);
@@ -38,24 +37,10 @@ export default async function profilePage(container, params = {}) {
 
     const shell = el('div', { className: 'prof' });
     shell.appendChild(buildIdentityHeader(user));
-    shell.appendChild(buildAccountSection(user, async () => profilePage(container, params)));
+    shell.appendChild(buildAccountSection(user, async () => profilePage(container)));
     shell.appendChild(buildContextSection({ teams, preferredTeam, supervisors }));
 
-    const archive = await buildNotificationArchiveSection({
-      open: params.section === 'notifications'
-    });
-    shell.appendChild(el('div', { className: 'prof-archive' }, archive));
-
     container.appendChild(shell);
-
-    if (params.section === 'notifications') {
-      requestAnimationFrame(() => {
-        document.getElementById('notifications-archive')?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'start'
-        });
-      });
-    }
   } catch (err) {
     showError(err);
     hideLoading(container);

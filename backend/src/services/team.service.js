@@ -30,7 +30,6 @@ import {
 import { countOpenActiveAssignmentsForAssigneeInTeam } from "../repositories/task.repository.js";
 import { findUserAccessProfileById } from "../repositories/user.repository.js";
 import { createAppError } from "../utils/appError.js";
-import { createTeamAddedNotification } from "./notification.service.js";
 
 const isAdminUser = (authUser) => authUser.appRole === APP_ROLES.ADMIN;
 const isManagerLikeUser = (authUser) =>
@@ -583,7 +582,6 @@ export const addTeamMemberForUser = async (
     insertTeamMember = createTeamMember,
     reactivateMember = reactivateTeamMember,
     recordMembershipEvent = insertTeamMembershipEvent,
-    notifyTeamAdded = createTeamAddedNotification,
     runTransaction = runInTransaction
   } = {}
 ) => {
@@ -664,12 +662,6 @@ export const addTeamMemberForUser = async (
     userId: input.userId
   });
   const team = await getTeamByIdForUser(authUser, teamId, { findTeam });
-
-  await notifyTeamAdded({
-    userId: input.userId,
-    teamId,
-    teamName: team.name
-  });
 
   return {
     team,

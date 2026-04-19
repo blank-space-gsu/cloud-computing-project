@@ -31,7 +31,7 @@ The planned roadmap is now complete. If the team wants to extend the project aft
 
 - task comments and update history
 - file attachments
-- scheduled/email reminder delivery beyond the current in-app notification endpoints
+- scheduled/email reminder delivery
 - export-ready reporting
 
 ## Backend Goals
@@ -59,7 +59,6 @@ As of April 17, 2026, the backend supports the focused product spine:
 - Worker Tracker manager drilldown
 - employee calendar support through due-dated assigned tasks
 - recurring task rules that generate real task instances
-- backend-backed in-app notifications
 - reusable smoke/audit tooling plus deployment docs
 
 Legacy backend surfaces for hours logging, productivity metrics, and goals still exist for compatibility, but they are no longer part of the promoted live product experience.

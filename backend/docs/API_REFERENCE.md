@@ -502,7 +502,6 @@ Bearer token required, role must be `manager` or `admin`.
 - duplicate memberships return `409 TEAM_MEMBERSHIP_EXISTS`
 - previously left or removed memberships are reactivated instead of creating a second history row
 - non-admin managers can only add regular members
-- a `team_added` notification is created immediately for the added user
 
 ### `GET /api/v1/teams/:teamId/join-access`
 
@@ -628,34 +627,7 @@ Provide exactly one of:
 - Team roster payloads now include `email`, `avatarUrl`, and `isActive`.
 - Use `/tasks` for task lists, filtering, and urgency sorting.
 - Use `/task-assignments` for manager-driven assignment actions.
-- Use `/notifications` for persistent backend-backed notifications.
 - Expect all API errors to be JSON, not HTML.
-
-## Notifications
-
-### `GET /api/v1/notifications`
-
-**Purpose**
-Returns persistent notifications for the authenticated user plus an unread count.
-
-**Auth**
-Bearer token required.
-
-**Response notes**
-
-- `data.notifications` is the current page of notifications
-- `data.unreadCount` counts unread and not-dismissed items across the user’s notification set
-- due-soon and overdue task alerts are generated lazily when this endpoint is read and are then persisted with deduping
-
-### `PATCH /api/v1/notifications/:notificationId/read`
-
-**Purpose**
-Marks a notification as read for the authenticated user.
-
-### `DELETE /api/v1/notifications/:notificationId`
-
-**Purpose**
-Soft-dismisses a notification for the authenticated user by setting `dismissedAt`.
 
 ## Tasks
 

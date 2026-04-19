@@ -384,7 +384,10 @@ export default async function loginPage(container, params = {}) {
           onClick: () => autofillDemo('manager')
         },
           el('span', { className: 'auth-demo__btn-label' }, 'Manager demo'),
-          el('span', { className: 'auth-demo__btn-email' }, DEMO_ACCOUNTS.manager.email)
+          el('span', {
+            className: 'auth-demo__btn-email',
+            title: DEMO_ACCOUNTS.manager.email
+          }, DEMO_ACCOUNTS.manager.email)
         ),
         el('button', {
           className: 'btn btn-outline btn-sm auth-demo__btn',
@@ -392,7 +395,10 @@ export default async function loginPage(container, params = {}) {
           onClick: () => autofillDemo('employee')
         },
           el('span', { className: 'auth-demo__btn-label' }, 'Employee demo'),
-          el('span', { className: 'auth-demo__btn-email' }, DEMO_ACCOUNTS.employee.email)
+          el('span', {
+            className: 'auth-demo__btn-email',
+            title: DEMO_ACCOUNTS.employee.email
+          }, DEMO_ACCOUNTS.employee.email)
         )
       )
     );

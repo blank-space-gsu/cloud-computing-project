@@ -1,0 +1,13 @@
+Confirm your email
+
+You just created a TaskTrail account. Verify your email to finish setting up:
+
+{{ .ConfirmationURL }}
+
+This link expires in 24 hours.
+
+Didn't sign up for TaskTrail? You can safely ignore this email -- no account will be created.
+
+--
+TaskTrail
+Get work to the right people.

@@ -1,7 +1,5 @@
 import { el, clearElement } from '../utils/dom.js';
 import { isSidebarCollapsed, toggleSidebarVisibility } from './sidebar.js';
-import { isLoggedIn } from '../auth.js';
-import { createNotificationBell } from './notifications.js';
 
 export function renderHeader(title, subtitle) {
   const header = document.getElementById('header');
@@ -26,8 +24,7 @@ export function renderHeader(title, subtitle) {
         el('h1', { className: 'header-title' }, title),
         subtitle ? el('p', { className: 'header-subtitle' }, subtitle) : null
         )
-      ),
-      isLoggedIn() ? createNotificationBell() : null
+      )
     )
   );
 }

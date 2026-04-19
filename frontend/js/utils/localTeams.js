@@ -4,8 +4,7 @@ function defaultState() {
   return {
     customTeams: [],
     overrides: {},
-    additions: {},
-    events: []
+    additions: {}
   };
 }
 
@@ -175,18 +174,6 @@ export function createCustomTeam({ name, description, currentUser, selectedMembe
 
   state.customTeams.push(team);
 
-  members.forEach((member) => {
-    state.events.push({
-      id: createId('team-event'),
-      type: 'team_added',
-      userId: member.id,
-      teamId: team.id,
-      teamName: team.name,
-      message: `You were added to ${team.name}.`,
-      createdAt: new Date().toISOString()
-    });
-  });
-
   writeState(state);
   return team;
 }
@@ -221,15 +208,6 @@ export function assignPeopleToTeam(teamId, people = [], options = {}) {
     snapshots.forEach((member) => {
       if (!existing.has(member.id)) {
         customTeam.members.push(member);
-        state.events.push({
-          id: createId('team-event'),
-          type: 'team_added',
-          userId: member.id,
-          teamId,
-          teamName: customTeam.name,
-          message: `You were added to ${customTeam.name}.`,
-          createdAt: new Date().toISOString()
-        });
       }
     });
     customTeam.updatedAt = new Date().toISOString();
@@ -244,27 +222,11 @@ export function assignPeopleToTeam(teamId, people = [], options = {}) {
   snapshots.forEach((member) => {
     if (!existing.has(member.id)) {
       nextAdditions.push(member);
-      state.events.push({
-        id: createId('team-event'),
-        type: 'team_added',
-        userId: member.id,
-        teamId,
-        teamName: options.teamName || '',
-        message: options.teamName ? `You were added to ${options.teamName}.` : 'You were added to a team.',
-        createdAt: new Date().toISOString()
-      });
     }
   });
 
   state.additions[teamId] = nextAdditions;
   writeState(state);
-}
-
-export function getTeamEventsForUser(userId) {
-  const state = readState();
-  return state.events
-    .filter((event) => event.userId === userId)
-    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 }
 
 export function buildAssignablePeople(teamBundles = [], currentUser = null) {

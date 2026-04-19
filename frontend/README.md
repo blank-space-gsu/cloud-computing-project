@@ -4,7 +4,7 @@
 
 This frontend is a plain HTML, CSS, and JavaScript single-page app for TaskTrail. It uses hash-based routing and connects to the backend API under `/api/v1`.
 
-The live UI is now a focused team task-flow product. It uses the validated backend API for authentication, team join access, tasks, Worker Tracker, calendar, profile saving, and notifications. Backend logic remains isolated in `/backend`.
+The live UI is now a focused team task-flow product. It uses the validated backend API for authentication, team join access, tasks, Worker Tracker, calendar, and profile saving. Backend logic remains isolated in `/backend`.
 
 ## What Was Built
 
@@ -15,7 +15,6 @@ The live UI is now a focused team task-flow product. It uses the validated backe
 - Employee Join Team, Tasks, Calendar, Teams, and Profile
 - Team join access management for managers
 - Backend-backed self-profile editing on the profile page
-- Backend-backed notification list, read, and dismiss actions
 - Responsive TaskTrail styling across the app
 
 Retired from the live app flow:
@@ -86,7 +85,6 @@ Use the password stored in `backend/.env` as `DEMO_USER_PASSWORD`.
 - Employees land on Join Team if they have no active memberships, otherwise on Tasks.
 - Self-profile edits save through `PATCH /api/v1/users/me` for `firstName`, `lastName`, `jobTitle`, `dateOfBirth`, and `address`.
 - Manager team creation, team editing, team membership add/remove, join-access regeneration, and recurring-task creation are backed by the real API.
-- Notifications load from the backend and support read/dismiss actions.
 - Profile photo management and employee creation remain placeholder UI actions in the current frontend. Backend support exists for URL-based avatar updates and employee creation, but those specific controls are not wired yet; binary profile-photo upload is not implemented.
 - Legacy backend endpoints for goals, productivity, and hours still exist, but they are no longer part of the live frontend product path.
 
@@ -116,9 +114,6 @@ Use the password stored in `backend/.env` as `DEMO_USER_PASSWORD`.
 - `GET /api/v1/dashboards/manager`
 - `GET /api/v1/worker-tracker`
 - `POST /api/v1/recurring-task-rules`
-- `GET /api/v1/notifications`
-- `PATCH /api/v1/notifications/:notificationId/read`
-- `DELETE /api/v1/notifications/:notificationId`
 
 ## Backend Handoff List
 
