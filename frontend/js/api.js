@@ -1,4 +1,17 @@
-const BASE_URL = 'http://localhost:4000/api/v1';
+const LOCAL_API_BASE_URL = 'http://localhost:4000/api/v1';
+const PRODUCTION_API_BASE_URL = 'https://api.tasktrail.site/api/v1';
+
+function resolveBaseUrl() {
+  const host = window.location.hostname;
+
+  if (host === 'localhost' || host === '127.0.0.1') {
+    return LOCAL_API_BASE_URL;
+  }
+
+  return PRODUCTION_API_BASE_URL;
+}
+
+const BASE_URL = resolveBaseUrl();
 
 function getToken() {
   return localStorage.getItem('accessToken');
