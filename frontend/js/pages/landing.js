@@ -34,7 +34,7 @@ export default async function landingPage(container) {
 function buildTopBar() {
   return el('header', { className: 'lp-top' },
     el('div', { className: 'lp-top__brand' },
-      el('span', { className: 'lp-top__mark', 'aria-hidden': 'true' }),
+      el('span', { className: 'lp-top__mark', 'aria-hidden': 'true' }, '⚡'),
       el('span', { className: 'lp-top__name' }, 'TaskTrail')
     ),
     el('button', {
