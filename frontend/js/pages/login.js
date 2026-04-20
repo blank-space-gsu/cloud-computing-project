@@ -5,8 +5,8 @@ import { renderSidebar } from '../components/sidebar.js';
 
 const DEMO_PASSWORD = 'cloudcomputing1!2';
 const DEMO_ACCOUNTS = {
-  manager: { email: 'manager.demo@cloudcomputing.local', password: DEMO_PASSWORD },
-  employee: { email: 'employee.one@cloudcomputing.local', password: DEMO_PASSWORD }
+  manager: { email: 'olivia.hart@tasktrail.local', password: DEMO_PASSWORD },
+  employee: { email: 'ethan.reyes@tasktrail.local', password: DEMO_PASSWORD }
 };
 
 export default async function loginPage(container, params = {}) {

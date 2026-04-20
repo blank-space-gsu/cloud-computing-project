@@ -11,6 +11,7 @@
     "start": "node src/server.js",
     "seed:demo-users": "node scripts/seed-demo-users.js",
     "seed:demo-group": "node scripts/seed-demo-group.js",
+    "seed:clean-demo": "node scripts/reset-clean-demo.js",
     "audit:local": "node scripts/deep-audit.js",
     "smoke": "node scripts/smoke-test.js",
     "smoke:local": "SMOKE_TEST_BASE_URL=http://localhost:4000 SMOKE_TEST_EXPECT_MANAGER_ACCESS=true node scripts/smoke-test.js",

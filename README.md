@@ -158,9 +158,11 @@ npm run seed:demo-group
 
 Demo accounts:
 
-- `manager.demo@cloudcomputing.local`
-- `employee.one@cloudcomputing.local`
-- `employee.two@cloudcomputing.local`
+- `olivia.hart@tasktrail.local`
+- `ethan.reyes@tasktrail.local`
+- `priya.shah@tasktrail.local`
+- `nina.patel@tasktrail.local`
+- `marcus.lee@tasktrail.local`
 
 The demo password is controlled by `DEMO_USER_PASSWORD` in the local backend `.env`.
 

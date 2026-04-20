@@ -73,9 +73,11 @@ Open `http://localhost:5500`.
 
 ## Demo Accounts
 
-- `manager.demo@cloudcomputing.local`
-- `employee.one@cloudcomputing.local`
-- `employee.two@cloudcomputing.local`
+- `olivia.hart@tasktrail.local`
+- `ethan.reyes@tasktrail.local`
+- `priya.shah@tasktrail.local`
+- `nina.patel@tasktrail.local`
+- `marcus.lee@tasktrail.local`
 
 Use the password stored in `backend/.env` as `DEMO_USER_PASSWORD`.
 

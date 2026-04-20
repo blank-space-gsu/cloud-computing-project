@@ -5,7 +5,7 @@ const baseUrl = (process.env.SMOKE_TEST_BASE_URL ?? defaultBaseUrl).replace(/\/$
 const apiPrefixInput = process.env.API_PREFIX ?? "/api/v1";
 const apiPrefix = apiPrefixInput.startsWith("/") ? apiPrefixInput : `/${apiPrefixInput}`;
 const apiBaseUrl = `${baseUrl}${apiPrefix}`;
-const smokeEmail = process.env.SMOKE_TEST_EMAIL ?? "manager.demo@cloudcomputing.local";
+const smokeEmail = process.env.SMOKE_TEST_EMAIL ?? "olivia.hart@tasktrail.local";
 const smokePassword = process.env.SMOKE_TEST_PASSWORD ?? process.env.DEMO_USER_PASSWORD;
 const managerAccessExpectation = process.env.SMOKE_TEST_EXPECT_MANAGER_ACCESS;
 

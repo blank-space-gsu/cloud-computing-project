@@ -9,9 +9,9 @@ const apiPrefix = apiPrefixInput.startsWith("/") ? apiPrefixInput : `/${apiPrefi
 const apiBaseUrl = `${baseUrl}${apiPrefix}`;
 
 const demoPassword = process.env.DEMO_USER_PASSWORD;
-const tempAdminEmail = "qa.admin.temp@cloudcomputing.local";
+const tempAdminEmail = "qa.admin.temp@tasktrail.local";
 const tempAdminPassword = process.env.DEEP_AUDIT_TEMP_ADMIN_PASSWORD ?? demoPassword;
-const demoGroupName = "Physical Demo Group";
+const demoGroupName = "Northstar Operations";
 
 if (!demoPassword) {
   throw new Error("DEMO_USER_PASSWORD is required to run the deep audit.");
@@ -283,11 +283,11 @@ const run = async () => {
   );
 
   const demoTeam = await getTeamByName(demoGroupName);
-  assertCheck(Boolean(demoTeam), "Physical Demo Group exists for deep audit");
+  assertCheck(Boolean(demoTeam), "Northstar Operations exists for deep audit");
 
-  const manager = await getUserByEmail("manager.demo@cloudcomputing.local");
-  const employeeOne = await getUserByEmail("employee.one@cloudcomputing.local");
-  const employeeTwo = await getUserByEmail("employee.two@cloudcomputing.local");
+  const manager = await getUserByEmail("olivia.hart@tasktrail.local");
+  const employeeOne = await getUserByEmail("ethan.reyes@tasktrail.local");
+  const employeeTwo = await getUserByEmail("priya.shah@tasktrail.local");
 
   assertCheck(Boolean(manager), "demo manager exists");
   assertCheck(Boolean(employeeOne), "demo employee one exists");
@@ -296,10 +296,10 @@ const run = async () => {
   const adminLogin = await login(tempAdminEmail, tempAdminPassword);
   assertCheck(adminLogin.user.appRole === "admin", "temp admin login resolves with admin app role");
 
-  const managerLogin = await login("manager.demo@cloudcomputing.local", demoPassword);
+  const managerLogin = await login("olivia.hart@tasktrail.local", demoPassword);
   assertCheck(managerLogin.user.appRole === "manager", "manager demo login resolves with manager app role");
 
-  const employeeLogin = await login("employee.one@cloudcomputing.local", demoPassword);
+  const employeeLogin = await login("ethan.reyes@tasktrail.local", demoPassword);
   assertCheck(employeeLogin.user.appRole === "employee", "employee demo login resolves with employee app role");
 
   const adminManagerAccess = await requestJson("/auth/manager-access", {
@@ -317,7 +317,7 @@ const run = async () => {
   assertCheck(adminTeams.response.status === 200, "admin can list teams");
   assertCheck(
     adminTeams.body.data.teams.some((team) => team.name === demoGroupName),
-    "admin can see Physical Demo Group without membership"
+    "admin can see Northstar Operations without membership"
   );
 
   const adminMembers = await requestJson(`/teams/${demoTeam.id}/members`, {

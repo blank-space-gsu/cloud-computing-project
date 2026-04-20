@@ -2,35 +2,8 @@ import "dotenv/config";
 import { env } from "../src/config/env.js";
 import { getServiceRoleSupabaseClient } from "../src/config/supabase.js";
 import { closePool } from "../src/db/pool.js";
-import { upsertTeam, upsertTeamMember } from "../src/repositories/team.repository.js";
 import { upsertUserProfile } from "../src/repositories/user.repository.js";
-
-const demoUsers = [
-  {
-    email: "manager.demo@cloudcomputing.local",
-    firstName: "Maya",
-    lastName: "Manager",
-    jobTitle: "Operations Manager",
-    appRole: "manager",
-    membershipRole: "manager"
-  },
-  {
-    email: "employee.one@cloudcomputing.local",
-    firstName: "Ethan",
-    lastName: "Employee",
-    jobTitle: "Operations Specialist",
-    appRole: "employee",
-    membershipRole: "member"
-  },
-  {
-    email: "employee.two@cloudcomputing.local",
-    firstName: "Priya",
-    lastName: "Employee",
-    jobTitle: "Task Coordinator",
-    appRole: "employee",
-    membershipRole: "member"
-  }
-];
+import { DEMO_USERS } from "./demo-fixture.js";
 
 const demoPassword = env.DEMO_USER_PASSWORD;
 
@@ -40,18 +13,39 @@ if (!demoPassword) {
   );
 }
 
-const findExistingAuthUser = async (supabaseClient, email) => {
-  const { data, error } = await supabaseClient.auth.admin.listUsers({
-    page: 1,
-    perPage: 1000
-  });
+const listAllAuthUsers = async (supabaseClient) => {
+  const users = [];
+  let page = 1;
 
-  if (error) {
-    throw error;
+  while (true) {
+    const { data, error } = await supabaseClient.auth.admin.listUsers({
+      page,
+      perPage: 200
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    const pageUsers = data?.users ?? [];
+
+    users.push(...pageUsers);
+
+    if (pageUsers.length < 200) {
+      break;
+    }
+
+    page += 1;
   }
 
-  return data.users.find(
-    (user) => user.email?.toLowerCase() === email.toLowerCase()
+  return users;
+};
+
+const findExistingAuthUser = async (supabaseClient, email) => {
+  const users = await listAllAuthUsers(supabaseClient);
+
+  return (
+    users.find((user) => user.email?.toLowerCase() === email.toLowerCase()) ?? null
   );
 };
 
@@ -104,14 +98,11 @@ const createOrUpdateAuthUser = async (supabaseClient, user) => {
   return data.user ?? data;
 };
 
-const main = async () => {
+export const seedDemoUsers = async () => {
   const supabaseClient = getServiceRoleSupabaseClient();
-  const team = await upsertTeam({
-    name: "Operations Team",
-    description: "Demo team for manager and employee authentication checks."
-  });
+  const seededUsers = [];
 
-  for (const demoUser of demoUsers) {
+  for (const demoUser of DEMO_USERS) {
     const authUser = await createOrUpdateAuthUser(supabaseClient, demoUser);
 
     await upsertUserProfile({
@@ -120,25 +111,46 @@ const main = async () => {
       firstName: demoUser.firstName,
       lastName: demoUser.lastName,
       jobTitle: demoUser.jobTitle,
+      dateOfBirth: demoUser.dateOfBirth ?? null,
+      address: demoUser.address ?? null,
+      avatarUrl: null,
       appRole: demoUser.appRole,
       isActive: true
     });
 
-    await upsertTeamMember({
-      teamId: team.id,
-      userId: authUser.id,
-      membershipRole: demoUser.membershipRole
+    seededUsers.push({
+      key: demoUser.key,
+      id: authUser.id,
+      email: demoUser.email,
+      firstName: demoUser.firstName,
+      lastName: demoUser.lastName,
+      appRole: demoUser.appRole
     });
   }
 
-  console.log("Demo auth users and team membership are ready.");
+  return seededUsers;
 };
 
-main()
-  .catch((error) => {
-    console.error("Failed to seed demo users.", error);
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await closePool();
-  });
+const main = async () => {
+  const users = await seedDemoUsers();
+
+  console.log("Clean demo users are ready:");
+  for (const user of users) {
+    console.log(`- ${user.firstName} ${user.lastName} <${user.email}> (${user.appRole})`);
+  }
+};
+
+const invokedPath = process.argv[1]
+  ? new URL(`file://${process.argv[1]}`).href
+  : null;
+
+if (invokedPath === import.meta.url) {
+  main()
+    .catch((error) => {
+      console.error("Failed to seed demo users.", error);
+      process.exitCode = 1;
+    })
+    .finally(async () => {
+      await closePool();
+    });
+}

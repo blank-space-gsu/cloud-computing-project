@@ -30,7 +30,7 @@ This project keeps runtime configuration in environment variables so secrets do 
 | `DATABASE_SSL_REJECT_UNAUTHORIZED` | Recommended | `false` | Controls the TLS certificate check used by the `pg` client |
 | `DEMO_USER_PASSWORD` | Optional | `your-demo-user-password` | Used by the demo seed flow and convenient local smoke checks |
 | `SMOKE_TEST_BASE_URL` | Optional | `http://localhost:4000` | Base URL used by `npm run smoke` |
-| `SMOKE_TEST_EMAIL` | Optional | `manager.demo@cloudcomputing.local` | Login identity for smoke verification |
+| `SMOKE_TEST_EMAIL` | Optional | `olivia.hart@tasktrail.local` | Login identity for smoke verification |
 | `SMOKE_TEST_PASSWORD` | Optional | `your-demo-user-password` | Password used by the smoke login flow |
 | `SMOKE_TEST_EXPECT_MANAGER_ACCESS` | Optional | `true` | Whether the smoke check should expect manager-only RBAC access to pass |
 

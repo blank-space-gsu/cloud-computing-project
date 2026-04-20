@@ -197,9 +197,11 @@ All responses use the standard success/error JSON envelope documented in the bac
 
 These demo accounts are expected to exist after running `npm run seed:demo-users`:
 
-- `manager.demo@cloudcomputing.local`
-- `employee.one@cloudcomputing.local`
-- `employee.two@cloudcomputing.local`
+- `olivia.hart@tasktrail.local`
+- `ethan.reyes@tasktrail.local`
+- `priya.shah@tasktrail.local`
+- `nina.patel@tasktrail.local`
+- `marcus.lee@tasktrail.local`
 
 ## Contributor Rules
 

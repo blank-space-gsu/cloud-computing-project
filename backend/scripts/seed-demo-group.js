@@ -1,35 +1,38 @@
 import "dotenv/config";
+import crypto from "node:crypto";
+import { env } from "../src/config/env.js";
+import { TASK_STATUSES } from "../src/constants/tasks.js";
 import {
-  GOAL_PERIODS,
-  GOAL_SCOPES,
-  GOAL_STATUSES,
-  GOAL_TYPES
-} from "../src/constants/goals.js";
-import { APP_ROLES } from "../src/constants/roles.js";
-import { TASK_PRIORITIES, TASK_STATUSES } from "../src/constants/tasks.js";
+  TEAM_ACCESS_TOKEN_TYPES,
+  TEAM_MEMBERSHIP_ROLES
+} from "../src/constants/teamMemberships.js";
 import { closePool, getPool } from "../src/db/pool.js";
-import { createGoal } from "../src/repositories/goal.repository.js";
-import { createHoursLog } from "../src/repositories/hoursLogged.repository.js";
+import { createRecurringTaskRule } from "../src/repositories/recurringTaskRule.repository.js";
 import {
   createTask,
-  createTaskAssignment
+  createTaskAssignment,
+  createTaskUpdate
 } from "../src/repositories/task.repository.js";
 import {
+  createTeamAccessToken,
+  revokeActiveTeamAccessTokens,
   upsertTeam,
   upsertTeamMember
 } from "../src/repositories/team.repository.js";
+import { findUserAccessProfileByEmail } from "../src/repositories/user.repository.js";
+import {
+  DEMO_LOGIN_ACCOUNTS,
+  DEMO_PRIMARY_TEAM_MEMBER_KEYS,
+  DEMO_RECURRING_RULE_BLUEPRINTS,
+  DEMO_TASK_BLUEPRINTS,
+  DEMO_TEAM,
+  DEMO_USERS
+} from "./demo-fixture.js";
 
-const DEMO_GROUP_NAME = "Physical Demo Group";
-const DEMO_GROUP_DESCRIPTION =
-  "Repeatable live demo team with seeded tasks, join access, and assignments.";
+const JOIN_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
-const DEMO_EMAILS = {
-  manager: "manager.demo@cloudcomputing.local",
-  employeeOne: "employee.one@cloudcomputing.local",
-  employeeTwo: "employee.two@cloudcomputing.local"
-};
-
-const formatDate = (value) => value.toISOString().slice(0, 10);
+const startOfUtcDay = (value = new Date()) =>
+  new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
 
 const addDays = (value, days) => {
   const next = new Date(value);
@@ -47,302 +50,384 @@ const setUtcTime = (value, hours, minutes = 0) => {
   return next;
 };
 
-const startOfUtcDay = (value = new Date()) =>
-  new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
+const formatDate = (value) => value.toISOString().slice(0, 10);
 
-const startOfUtcWeekMonday = (value = new Date()) => {
+const mondayFor = (value) => {
   const dayStart = startOfUtcDay(value);
   const isoDay = dayStart.getUTCDay() === 0 ? 7 : dayStart.getUTCDay();
 
   return addDays(dayStart, 1 - isoDay);
 };
 
-const findUsersByEmail = async (emails, client) => {
-  const result = await client.query(
+const buildInviteUrl = (inviteToken, membershipRole) => {
+  const baseOrigin =
+    env.frontendOrigins?.[0]
+      ?? env.FRONTEND_APP_ORIGIN.split(",").map((value) => value.trim()).find(Boolean)
+      ?? "https://tasktrail.site";
+  const inviteUrl = `${baseOrigin}/#/join?inviteToken=${encodeURIComponent(inviteToken)}`;
+
+  if (membershipRole === TEAM_MEMBERSHIP_ROLES.MANAGER) {
+    return `${inviteUrl}&membershipRole=${encodeURIComponent(membershipRole)}`;
+  }
+
+  return inviteUrl;
+};
+
+const generateJoinCode = (length = 8) =>
+  Array.from(crypto.randomBytes(length))
+    .map((value) => JOIN_CODE_ALPHABET[value % JOIN_CODE_ALPHABET.length])
+    .join("");
+
+const generateInviteToken = () => crypto.randomBytes(24).toString("base64url");
+
+const deleteExistingTeamByName = async (teamName, client) => {
+  const existingTeamResult = await client.query(
     `
-      select
-        id,
-        email,
-        first_name,
-        last_name,
-        app_role,
-        is_active
-      from public.users
-      where lower(email) = any($1::text[])
+      select id
+      from public.teams
+      where name = $1
     `,
-    [emails.map((email) => email.toLowerCase())]
+    [teamName]
   );
 
-  return result.rows;
+  const existingTeamId = existingTeamResult.rows[0]?.id ?? null;
+
+  if (!existingTeamId) {
+    return;
+  }
+
+  await client.query(`delete from public.notifications where team_id = $1`, [existingTeamId]);
+  await client.query(`delete from public.team_access_tokens where team_id = $1`, [existingTeamId]);
+  await client.query(`delete from public.team_membership_events where team_id = $1`, [existingTeamId]);
+  await client.query(`delete from public.goals where team_id = $1`, [existingTeamId]);
+  await client.query(`delete from public.hours_logged where team_id = $1`, [existingTeamId]);
+  await client.query(`delete from public.tasks where team_id = $1`, [existingTeamId]);
+  await client.query(`delete from public.recurring_task_rules where team_id = $1`, [existingTeamId]);
+  await client.query(`delete from public.teams where id = $1`, [existingTeamId]);
 };
 
-const deleteExistingDemoData = async (teamId, client) => {
-  await client.query(`delete from public.goals where team_id = $1`, [teamId]);
-  await client.query(`delete from public.hours_logged where team_id = $1`, [teamId]);
-  await client.query(`delete from public.tasks where team_id = $1`, [teamId]);
+const findDemoUsersByKey = async () => {
+  const usersByKey = new Map();
+
+  for (const user of DEMO_USERS) {
+    const profile = await findUserAccessProfileByEmail(user.email);
+
+    if (!profile) {
+      throw new Error(
+        `Missing demo account ${user.email}. Run \`npm run seed:demo-users\` before seeding the demo group.`
+      );
+    }
+
+    usersByKey.set(user.key, profile);
+  }
+
+  return usersByKey;
 };
 
-const main = async () => {
+const ensureJoinAccessPair = async (
+  teamId,
+  grantedMembershipRole,
+  createdByUserId,
+  client
+) => {
+  await revokeActiveTeamAccessTokens(
+    {
+      teamId,
+      grantedMembershipRole
+    },
+    { pool: client }
+  );
+
+  const joinCode = generateJoinCode();
+  const inviteToken = generateInviteToken();
+
+  await createTeamAccessToken(
+    {
+      teamId,
+      tokenType: TEAM_ACCESS_TOKEN_TYPES.JOIN_CODE,
+      grantedMembershipRole,
+      tokenValue: joinCode,
+      createdByUserId
+    },
+    { pool: client }
+  );
+
+  await createTeamAccessToken(
+    {
+      teamId,
+      tokenType: TEAM_ACCESS_TOKEN_TYPES.INVITE_LINK,
+      grantedMembershipRole,
+      tokenValue: inviteToken,
+      createdByUserId
+    },
+    { pool: client }
+  );
+
+  return {
+    membershipRole: grantedMembershipRole,
+    joinCode,
+    inviteToken,
+    inviteUrl: buildInviteUrl(inviteToken, grantedMembershipRole)
+  };
+};
+
+const createGeneratedRecurringTask = async (
+  recurringRuleId,
+  blueprint,
+  teamId,
+  managerId,
+  assigneeUserId,
+  generatedForDate,
+  client
+) => {
+  const dueTimeParts = blueprint.dueTime.split(":").map(Number);
+  const dueAt = setUtcTime(
+    generatedForDate,
+    dueTimeParts[0] ?? 9,
+    dueTimeParts[1] ?? 0
+  ).toISOString();
+  const taskId = await createTask(
+    {
+      teamId,
+      title: blueprint.title,
+      description: blueprint.description,
+      notes:
+        blueprint.generatedTaskNotes
+        ?? "Generated from the recurring schedule for demo visibility.",
+      status: blueprint.generatedTaskStatus ?? TASK_STATUSES.TODO,
+      priority: blueprint.priority,
+      dueAt,
+      weekStartDate: formatDate(mondayFor(generatedForDate)),
+      recurringRuleId,
+      generatedForDate: formatDate(generatedForDate),
+      estimatedHours: 1.25,
+      progressPercent: blueprint.generatedTaskProgressPercent ?? 0,
+      createdByUserId: managerId,
+      updatedByUserId: managerId
+    },
+    { pool: client }
+  );
+
+  if (assigneeUserId) {
+    await createTaskAssignment(
+      {
+        taskId,
+        assigneeUserId,
+        assignedByUserId: managerId,
+        assignmentNote: "Generated from the recurring schedule."
+      },
+      { pool: client }
+    );
+  }
+
+  await createTaskUpdate(
+    {
+      taskId,
+      updatedByUserId: managerId,
+      updateType: "created",
+      statusAfter: blueprint.generatedTaskStatus ?? TASK_STATUSES.TODO,
+      progressPercentAfter: blueprint.generatedTaskProgressPercent ?? 0,
+      note: blueprint.generatedTaskNotes ?? "Generated recurring task instance.",
+      assigneeUserId: assigneeUserId ?? null
+    },
+    { pool: client }
+  );
+};
+
+export const seedDemoGroup = async () => {
   const pool = getPool();
   const client = await pool.connect();
 
   try {
     await client.query("begin");
 
+    const usersByKey = await findDemoUsersByKey();
+    const manager = usersByKey.get(DEMO_LOGIN_ACCOUNTS.manager.key);
+    const employeeOne = usersByKey.get(DEMO_LOGIN_ACCOUNTS.employee.key);
+    const employeeTwo = usersByKey.get("employeeTwo");
+    await deleteExistingTeamByName(DEMO_TEAM.name, client);
+
     const team = await upsertTeam(
       {
-        name: DEMO_GROUP_NAME,
-        description: DEMO_GROUP_DESCRIPTION
+        name: DEMO_TEAM.name,
+        description: DEMO_TEAM.description
       },
       { pool: client }
     );
 
-    const users = await findUsersByEmail(Object.values(DEMO_EMAILS), client);
-    const usersByEmail = new Map(users.map((user) => [user.email.toLowerCase(), user]));
+    for (const userKey of DEMO_PRIMARY_TEAM_MEMBER_KEYS) {
+      const fixture = DEMO_USERS.find((user) => user.key === userKey);
+      const user = usersByKey.get(userKey);
 
-    const manager = usersByEmail.get(DEMO_EMAILS.manager);
-    const employeeOne = usersByEmail.get(DEMO_EMAILS.employeeOne);
-    const employeeTwo = usersByEmail.get(DEMO_EMAILS.employeeTwo);
-
-    if (!manager || !employeeOne || !employeeTwo) {
-      throw new Error(
-        "Demo users are missing. Run `npm run seed:demo-users` before seeding the demo group."
-      );
-    }
-
-    if (manager.app_role !== APP_ROLES.MANAGER) {
-      throw new Error("The demo manager account is not configured with the manager role.");
-    }
-
-    for (const membership of [
-      { userId: manager.id, membershipRole: "manager" },
-      { userId: employeeOne.id, membershipRole: "member" },
-      { userId: employeeTwo.id, membershipRole: "member" }
-    ]) {
       await upsertTeamMember(
         {
           teamId: team.id,
-          userId: membership.userId,
-          membershipRole: membership.membershipRole
+          userId: user.id,
+          membershipRole: fixture.membershipRole
         },
         { pool: client }
       );
     }
 
-    await deleteExistingDemoData(team.id, client);
-
     const today = startOfUtcDay();
-    const weekStartDate = formatDate(startOfUtcWeekMonday(today));
-    const yesterday = addDays(today, -1);
-    const twoDaysAgo = addDays(today, -2);
-    const tomorrow = addDays(today, 1);
-    const threeDaysFromNow = addDays(today, 3);
+    const taskIdsByKey = new Map();
 
-    const taskDefinitions = [
-      {
-        key: "manifestReview",
-        title: "[DEMO] Loading manifest review",
-        description: "Review outbound manifest totals before the afternoon dispatch window.",
-        notes: "Manager wants a clean sign-off before 5 PM.",
-        status: TASK_STATUSES.TODO,
-        priority: TASK_PRIORITIES.HIGH,
-        dueAt: setUtcTime(tomorrow, 17).toISOString(),
-        estimatedHours: 2.5,
-        progressPercent: 0,
-        assigneeUserId: employeeOne.id,
-        assignmentNote: "Please finish before the loading bay review."
-      },
-      {
-        key: "inventoryReconciliation",
-        title: "[DEMO] Inventory reconciliation",
-        description: "Compare physical count against the system for aisle C and aisle D.",
-        notes: "Escalate mismatches over 5 units.",
-        status: TASK_STATUSES.IN_PROGRESS,
-        priority: TASK_PRIORITIES.URGENT,
-        dueAt: setUtcTime(today, 20).toISOString(),
-        estimatedHours: 4,
-        progressPercent: 45,
-        assigneeUserId: employeeTwo.id,
-        assignmentNote: "This is the highest-priority task for today."
-      },
-      {
-        key: "dispatchReport",
-        title: "[DEMO] Weekly dispatch report",
-        description: "Send the weekly dispatch performance summary to management.",
-        notes: "Completed ahead of the Friday review meeting.",
-        status: TASK_STATUSES.COMPLETED,
-        priority: TASK_PRIORITIES.MEDIUM,
-        dueAt: setUtcTime(yesterday, 16).toISOString(),
-        estimatedHours: 1.5,
-        progressPercent: 100,
-        completedAt: setUtcTime(yesterday, 14, 30).toISOString(),
-        assigneeUserId: employeeOne.id,
-        assignmentNote: "Attach completion notes for the team meeting."
-      },
-      {
-        key: "safetyAudit",
-        title: "[DEMO] Safety equipment audit",
-        description: "Verify that floor safety stations are stocked and logged.",
-        notes: "Blocked pending replacement goggles for station 4.",
-        status: TASK_STATUSES.BLOCKED,
-        priority: TASK_PRIORITIES.HIGH,
-        dueAt: setUtcTime(twoDaysAgo, 15).toISOString(),
-        estimatedHours: 3,
-        progressPercent: 20,
-        assigneeUserId: employeeTwo.id,
-        assignmentNote: "Document blockers clearly for the manager dashboard."
-      }
-    ];
-
-    const seededTaskIds = {};
-
-    for (const taskDefinition of taskDefinitions) {
+    for (const blueprint of DEMO_TASK_BLUEPRINTS) {
+      const dueDate = setUtcTime(
+        addDays(today, blueprint.dueDaysFromToday),
+        blueprint.dueHourUtc
+      );
+      const completedAt = blueprint.completedDaysFromToday === undefined
+        ? null
+        : setUtcTime(
+            addDays(today, blueprint.completedDaysFromToday),
+            blueprint.completedHourUtc ?? blueprint.dueHourUtc
+          ).toISOString();
+      const assignee = blueprint.assigneeKey
+        ? usersByKey.get(blueprint.assigneeKey)
+        : null;
       const taskId = await createTask(
         {
           teamId: team.id,
-          title: taskDefinition.title,
-          description: taskDefinition.description,
-          notes: taskDefinition.notes,
-          status: taskDefinition.status,
-          priority: taskDefinition.priority,
-          dueAt: taskDefinition.dueAt,
-          weekStartDate,
-          estimatedHours: taskDefinition.estimatedHours,
-          progressPercent: taskDefinition.progressPercent,
+          title: blueprint.title,
+          description: blueprint.description,
+          notes: blueprint.notes,
+          status: blueprint.status,
+          priority: blueprint.priority,
+          dueAt: dueDate.toISOString(),
+          weekStartDate: formatDate(mondayFor(dueDate)),
+          estimatedHours: blueprint.estimatedHours,
+          progressPercent: blueprint.progressPercent,
           createdByUserId: manager.id,
           updatedByUserId: manager.id,
-          completedAt: taskDefinition.completedAt ?? null
+          completedAt
         },
         { pool: client }
       );
 
-      seededTaskIds[taskDefinition.key] = taskId;
+      if (assignee) {
+        await createTaskAssignment(
+          {
+            taskId,
+            assigneeUserId: assignee.id,
+            assignedByUserId: manager.id,
+            assignmentNote: blueprint.assignmentNote ?? null
+          },
+          { pool: client }
+        );
+      }
 
-      await createTaskAssignment(
+      await createTaskUpdate(
         {
           taskId,
-          assigneeUserId: taskDefinition.assigneeUserId,
-          assignedByUserId: manager.id,
-          assignmentNote: taskDefinition.assignmentNote
+          updatedByUserId: manager.id,
+          updateType: "created",
+          statusAfter: blueprint.status,
+          progressPercentAfter: blueprint.progressPercent,
+          note: blueprint.notes,
+          assigneeUserId: assignee?.id ?? null
         },
         { pool: client }
       );
+
+      taskIdsByKey.set(blueprint.key, taskId);
     }
 
-    for (const hoursEntry of [
-      {
-        userId: employeeOne.id,
-        taskId: seededTaskIds.manifestReview,
-        workDate: formatDate(today),
-        hours: 2.25,
-        note: "Reviewed the loading manifest and corrected two mismatched carton counts."
-      },
-      {
-        userId: employeeTwo.id,
-        taskId: seededTaskIds.inventoryReconciliation,
-        workDate: formatDate(today),
-        hours: 3.5,
-        note: "Reconciled aisle C and logged a pending mismatch for aisle D."
-      },
-      {
-        userId: employeeOne.id,
-        taskId: seededTaskIds.dispatchReport,
-        workDate: formatDate(yesterday),
-        hours: 1.5,
-        note: "Compiled and submitted the weekly dispatch summary."
-      }
-    ]) {
-      await createHoursLog(
+    const recurringRules = [];
+
+    for (const blueprint of DEMO_RECURRING_RULE_BLUEPRINTS) {
+      const assignee = blueprint.defaultAssigneeKey
+        ? usersByKey.get(blueprint.defaultAssigneeKey)
+        : null;
+      const ruleId = await createRecurringTaskRule(
         {
-          userId: hoursEntry.userId,
           teamId: team.id,
-          taskId: hoursEntry.taskId,
-          workDate: hoursEntry.workDate,
-          hours: hoursEntry.hours,
-          note: hoursEntry.note,
-          createdByUserId: hoursEntry.userId,
-          updatedByUserId: hoursEntry.userId
-        },
-        { pool: client }
-      );
-    }
-
-    const monthStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
-    const monthEnd = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 0));
-
-    for (const goal of [
-      {
-        teamId: team.id,
-        targetUserId: employeeOne.id,
-        title: "[DEMO] Monthly sales quota",
-        description: "Track this employee's monthly outbound sales support target.",
-        goalType: GOAL_TYPES.SALES_QUOTA,
-        scope: GOAL_SCOPES.USER,
-        period: GOAL_PERIODS.MONTHLY,
-        startDate: formatDate(monthStart),
-        endDate: formatDate(monthEnd),
-        targetValue: 15000,
-        actualValue: 7200,
-        unit: "USD",
-        status: GOAL_STATUSES.ACTIVE
-      },
-      {
-        teamId: team.id,
-        targetUserId: null,
-        title: "[DEMO] Weekly throughput goal",
-        description: "Shared team target for completed operational tasks this week.",
-        goalType: GOAL_TYPES.SALES_QUOTA,
-        scope: GOAL_SCOPES.TEAM,
-        period: GOAL_PERIODS.WEEKLY,
-        startDate: weekStartDate,
-        endDate: formatDate(threeDaysFromNow),
-        targetValue: 40,
-        actualValue: 26,
-        unit: "tasks",
-        status: GOAL_STATUSES.ACTIVE
-      }
-    ]) {
-      await createGoal(
-        {
-          ...goal,
+          title: blueprint.title,
+          description: blueprint.description,
+          priority: blueprint.priority,
+          defaultAssigneeUserId: assignee?.id ?? null,
+          frequency: blueprint.frequency,
+          weekdays: blueprint.weekdays ?? null,
+          dayOfMonth: blueprint.dayOfMonth ?? null,
+          dueTime: blueprint.dueTime,
+          startsOn: formatDate(addDays(today, blueprint.startsOnOffsetDays)),
+          endsOn: blueprint.endsOnOffsetDays === undefined
+            ? null
+            : formatDate(addDays(today, blueprint.endsOnOffsetDays)),
           createdByUserId: manager.id,
           updatedByUserId: manager.id
         },
         { pool: client }
       );
+
+      const generatedForDate = (() => {
+        if (blueprint.frequency === "daily") {
+          return addDays(today, 1);
+        }
+
+        if (blueprint.frequency === "weekly") {
+          const weekday = blueprint.weekdays[0] ?? 1;
+          const currentWeekday = today.getUTCDay();
+          const rawDelta = (weekday - currentWeekday + 7) % 7;
+          const delta = rawDelta === 0 ? 7 : rawDelta;
+
+          return addDays(today, delta);
+        }
+
+        const next = new Date(today);
+        next.setUTCDate(blueprint.dayOfMonth);
+        if (next < today) {
+          next.setUTCMonth(next.getUTCMonth() + 1);
+        }
+        return next;
+      })();
+
+      recurringRules.push({
+        id: ruleId,
+        title: blueprint.title,
+        frequency: blueprint.frequency
+      });
+
+      await createGeneratedRecurringTask(
+        ruleId,
+        blueprint,
+        team.id,
+        manager.id,
+        assignee?.id ?? null,
+        generatedForDate,
+        client
+      );
     }
+
+    const employeeJoinAccess = await ensureJoinAccessPair(
+      team.id,
+      TEAM_MEMBERSHIP_ROLES.MEMBER,
+      manager.id,
+      client
+    );
+    const managerJoinAccess = await ensureJoinAccessPair(
+      team.id,
+      TEAM_MEMBERSHIP_ROLES.MANAGER,
+      manager.id,
+      client
+    );
 
     await client.query("commit");
 
-    console.log(
-      JSON.stringify(
-        {
-          message: "Physical demo group is ready.",
-          team: {
-            id: team.id,
-            name: team.name,
-            description: team.description
-          },
-          users: {
-            manager: {
-              id: manager.id,
-              email: manager.email
-            },
-            employeeOne: {
-              id: employeeOne.id,
-              email: employeeOne.email
-            },
-            employeeTwo: {
-              id: employeeTwo.id,
-              email: employeeTwo.email
-            }
-          },
-          tasks: seededTaskIds
-        },
-        null,
-        2
-      )
-    );
+    return {
+      team,
+      recurringRules,
+      employeeJoinAccess,
+      managerJoinAccess,
+      accounts: {
+        manager: manager.email,
+        employeeOne: employeeOne.email,
+        employeeTwo: employeeTwo.email,
+        employeeJoin: DEMO_LOGIN_ACCOUNTS.employeeJoin.email,
+        managerJoin: DEMO_LOGIN_ACCOUNTS.managerJoin.email
+      },
+      taskIds: Object.fromEntries(taskIdsByKey)
+    };
   } catch (error) {
     await client.query("rollback");
     throw error;
@@ -351,11 +436,32 @@ const main = async () => {
   }
 };
 
-main()
-  .catch((error) => {
-    console.error("Failed to seed the physical demo group.", error);
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await closePool();
-  });
+const main = async () => {
+  const seeded = await seedDemoGroup();
+
+  console.log(`Clean demo team ready: ${seeded.team.name}`);
+  console.log(`Manager account: ${seeded.accounts.manager}`);
+  console.log(`Employee account: ${seeded.accounts.employeeOne}`);
+  console.log(`Secondary employee: ${seeded.accounts.employeeTwo}`);
+  console.log(`Join-flow employee: ${seeded.accounts.employeeJoin}`);
+  console.log(`Manager-invite account: ${seeded.accounts.managerJoin}`);
+  console.log(`Employee join code: ${seeded.employeeJoinAccess.joinCode}`);
+  console.log(`Employee invite URL: ${seeded.employeeJoinAccess.inviteUrl}`);
+  console.log(`Manager join code: ${seeded.managerJoinAccess.joinCode}`);
+  console.log(`Manager invite URL: ${seeded.managerJoinAccess.inviteUrl}`);
+};
+
+const invokedPath = process.argv[1]
+  ? new URL(`file://${process.argv[1]}`).href
+  : null;
+
+if (invokedPath === import.meta.url) {
+  main()
+    .catch((error) => {
+      console.error("Failed to seed the clean demo group.", error);
+      process.exitCode = 1;
+    })
+    .finally(async () => {
+      await closePool();
+    });
+}

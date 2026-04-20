@@ -184,7 +184,7 @@ From `/Users/admin/Documents/GitHub/cloud-computing-project/backend`:
 
 ```bash
 SMOKE_TEST_BASE_URL=https://your-api.onrender.com \
-SMOKE_TEST_EMAIL=manager.demo@cloudcomputing.local \
+SMOKE_TEST_EMAIL=olivia.hart@tasktrail.local \
 SMOKE_TEST_PASSWORD=your-demo-password \
 SMOKE_TEST_EXPECT_MANAGER_ACCESS=true \
 npm run smoke
