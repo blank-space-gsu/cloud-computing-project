@@ -2,46 +2,31 @@
 
 ## Recommended Deployment Target
 
-Use Render for this backend.
+Use the dedicated **OCI compute instance** for the TaskTrail backend.
 
-Why this is the best fit for the project:
+The production deployment path is:
 
-- easy Node.js web-service setup
-- simple environment-variable management
-- straightforward deploy logs and health checks
-- friendly for student teams that want one backend service without extra infrastructure
+- GitHub Actions on pushes to `main`
+- Docker image build for `backend/`
+- push image to GHCR
+- SSH deploy to the dedicated TaskTrail OCI VM
+- Caddy reverse proxy on the VM serves `https://api.tasktrail.site`
 
-The database still stays in Supabase, because the project requirement is Supabase PostgreSQL.
+The database remains hosted in Supabase, and SMTP remains managed through Supabase Auth + Resend.
 
-## Backend Docker Image
+## Current Production Shape
 
-TaskTrail’s backend can also be packaged as a single production container for Oracle or any other container host. This repo now includes:
+TaskTrail’s backend is packaged as a single production container:
 
 - Dockerfile: [backend/Dockerfile](/Users/admin/Documents/GitHub/cloud-computing-project/backend/Dockerfile)
 - Docker ignore rules: [backend/.dockerignore](/Users/admin/Documents/GitHub/cloud-computing-project/backend/.dockerignore)
 
-Build the image from the repository root:
+Runtime model:
 
-```bash
-docker build -t tasktrail-backend ./backend
-```
-
-Run it with runtime environment variables:
-
-```bash
-docker run --rm -p 4000:4000 \
-  -e NODE_ENV=production \
-  -e PORT=4000 \
-  -e FRONTEND_APP_ORIGIN=https://tasktrail.site \
-  -e SUPABASE_AUTH_EMAIL_REDIRECT_TO=https://tasktrail.site \
-  -e SUPABASE_URL=your-supabase-url \
-  -e SUPABASE_ANON_KEY=your-supabase-anon-key \
-  -e SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key \
-  -e SUPABASE_JWT_SECRET=your-supabase-jwt-secret \
-  -e DATABASE_URL=your-supabase-pooler-url \
-  -e DATABASE_SSL_REJECT_UNAUTHORIZED=false \
-  tasktrail-backend
-```
+- Dockerized backend
+- env injected from `/etc/tasktrail-backend.env` on the OCI VM
+- backend container listens on `127.0.0.1:4000`
+- Caddy reverse proxies `api.tasktrail.site -> 127.0.0.1:4000`
 
 Notes:
 
@@ -51,61 +36,64 @@ Notes:
 - `NODE_ENV=production` requires real HTTPS frontend origins and a real `SUPABASE_AUTH_EMAIL_REDIRECT_TO`, so localhost-only values are intentionally rejected in that mode.
 - `PORT` defaults to `4000` and the image exposes `4000`.
 
-## Deployment Artifacts in This Repo
+## Automated Deployment Flow
 
-- root Blueprint file: `/Users/admin/Documents/GitHub/cloud-computing-project/render.yaml`
-- runtime target: Node 22
+This repo now uses a backend-only deployment workflow:
+
+- workflow file: `.github/workflows/backend-deploy.yml`
+- remote deploy script: [backend/scripts/deploy-oci-backend.sh](/Users/admin/Documents/GitHub/cloud-computing-project/backend/scripts/deploy-oci-backend.sh)
 - health check path: `/api/v1/health`
-- local smoke check script: `/Users/admin/Documents/GitHub/cloud-computing-project/backend/scripts/smoke-test.js`
+- smoke check script: [backend/scripts/smoke-test.js](/Users/admin/Documents/GitHub/cloud-computing-project/backend/scripts/smoke-test.js)
 
-## Prerequisites
+The workflow runs on pushes to `main` when backend deployment files change:
 
-Before deploying:
+- `backend/**`
+- `.github/workflows/backend-deploy.yml`
+- `backend/scripts/deploy-oci-backend.sh`
 
-1. the backend should already pass `npm test`
-2. the linked Supabase project should already contain the applied migrations
-3. you should have the production values for:
-   - `SUPABASE_URL`
-   - `SUPABASE_ANON_KEY`
-   - `SUPABASE_SERVICE_ROLE_KEY`
-   - `SUPABASE_JWT_SECRET`
-   - `DATABASE_URL`
-   - `FRONTEND_APP_ORIGIN` (`https://tasktrail.site` and any exact additional deployed origins)
-   - `SUPABASE_AUTH_EMAIL_REDIRECT_TO` (`https://tasktrail.site`)
-4. you should also have the production email-delivery inputs ready for Supabase Auth:
-   - a verified Resend domain for TaskTrail
-   - a Resend API key to use as the SMTP password
-   - the final sender identity (`TaskTrail Auth <auth@tasktrail.site>`)
+The workflow jobs are:
 
-## Option A - Deploy with the Included `render.yaml`
+1. run backend tests with Node 22
+2. build the Docker image from `backend/`
+3. push the image to GHCR as:
+   - `ghcr.io/blank-space-gsu/tasktrail-backend:sha-<commit-sha>`
+   - `ghcr.io/blank-space-gsu/tasktrail-backend:latest`
+4. SSH to the dedicated TaskTrail OCI VM
+5. pull and restart the backend container
+6. verify local health on the VM
+7. verify public health at `https://api.tasktrail.site/api/v1/health`
 
-This is the easiest and most repeatable option.
+## GitHub Secrets Required
 
-1. Push the repository to GitHub.
-2. In Render, create a new Blueprint deployment from the repository.
-3. Render will detect `/render.yaml`.
-4. Confirm the web service name and branch.
-5. Enter the secret environment variables when Render prompts for them.
-6. Finish the deploy.
+Set these repository secrets before enabling the workflow:
 
-The Blueprint is configured so Render deploys the backend from `backend/` while keeping the repo in monorepo form.
+| Secret | Purpose |
+| --- | --- |
+| `OCI_VM_HOST` | Public IP or hostname of the dedicated TaskTrail OCI VM |
+| `OCI_VM_USER` | SSH user for that VM, typically `ubuntu` |
+| `OCI_SSH_PRIVATE_KEY` | Private key for SSH access to the dedicated TaskTrail OCI VM |
+| `GHCR_READ_TOKEN` | GitHub token with package read access for `ghcr.io/blank-space-gsu/tasktrail-backend` |
 
-## Option B - Manual Render Setup
+Notes:
 
-If you prefer the dashboard flow instead of Blueprints:
+- The workflow uses the built-in `GITHUB_TOKEN` to push to GHCR.
+- `GHCR_READ_TOKEN` is only for the remote VM to pull images from GHCR.
 
-1. Create a new Web Service in Render from the repository.
-2. Set the root directory to `backend`.
-3. Set the runtime to Node.
-4. Set the build command to `npm install`.
-5. Set the start command to `npm start`.
-6. Set the health check path to `/api/v1/health`.
-7. Set the Node version to `22`.
-8. Add the required environment variables listed below.
+## OCI VM Prerequisites
 
-## Required Environment Variables
+Before enabling auto-deploy:
 
-These should be set in Render:
+1. Docker must already be installed and running on the dedicated TaskTrail OCI VM
+2. `/etc/tasktrail-backend.env` must already exist on that VM with the correct production values
+3. the backend must already be healthy on that host
+4. Caddy must already be reverse proxying:
+   - `api.tasktrail.site -> 127.0.0.1:4000`
+
+The deployment script is intentionally designed for the **dedicated TaskTrail VM only** and should not be repointed at older shared hosts.
+
+## Required Runtime Environment Variables
+
+These belong in `/etc/tasktrail-backend.env` on the OCI VM:
 
 | Variable | Value source | Notes |
 | --- | --- | --- |
@@ -173,17 +161,18 @@ The backend now fails fast in production if either value still points at localho
 Recommended order:
 
 1. confirm migrations are aligned with `supabase migration list`
-2. deploy the backend service to Render
-3. wait for Render to report the health check as passing
-4. run the smoke check against the deployed base URL
-5. update the frontend team with the stable deployed API base URL
+2. apply any required migrations manually before merging code that depends on them
+3. push the backend change to `main`
+4. let GitHub Actions build, publish, and deploy the backend automatically
+5. verify `https://api.tasktrail.site/api/v1/health`
+6. run the smoke check against the deployed API base URL
 
 ## Post-Deploy Smoke Check
 
 From `/Users/admin/Documents/GitHub/cloud-computing-project/backend`:
 
 ```bash
-SMOKE_TEST_BASE_URL=https://your-api.onrender.com \
+SMOKE_TEST_BASE_URL=https://api.tasktrail.site \
 SMOKE_TEST_EMAIL=olivia.hart@tasktrail.local \
 SMOKE_TEST_PASSWORD=your-demo-password \
 SMOKE_TEST_EXPECT_MANAGER_ACCESS=true \
@@ -211,27 +200,30 @@ Before a presentation:
 
 ## Operational Notes
 
-- keep real secrets only in Render environment-variable settings, not in the repo
-- if the frontend is deployed separately, remember to update `FRONTEND_APP_ORIGIN`
+- keep real secrets only in GitHub repository secrets and the OCI VM env file, not in the repo
+- if the frontend is deployed separately, remember to update `FRONTEND_APP_ORIGIN` in `/etc/tasktrail-backend.env`
 - keep Supabase Auth email confirmations enabled when self-service signup is live
 - if you need verification emails to reach arbitrary inboxes, configure a production SMTP provider in Supabase Auth
 - TaskTrail production should use Resend-backed custom SMTP instead of the default Supabase provider
-- if deployment fails but health passes locally, compare Render environment variables first
+- if deployment fails but health passes locally, compare GitHub secrets and `/etc/tasktrail-backend.env` first
 - if auth fails in production, verify `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_JWT_SECRET`
 - if verification links redirect to the wrong place, verify both Supabase URL Configuration and `SUPABASE_AUTH_EMAIL_REDIRECT_TO`
 - if verification emails stop arriving, check both the Resend verified-domain state and Supabase Auth SMTP settings before changing application code
 - if database connectivity fails, verify the Supabase pooler `DATABASE_URL`
+- GitHub Actions does **not** run `supabase db push`; schema changes remain manual and deliberate
+- if backend code depends on new schema, apply migrations before merging to `main`
 
 ## Rollback Approach
 
 If a deploy introduces a regression:
 
-1. roll back to the previous working Render deploy
-2. confirm `/api/v1/health` is green again
+1. let the deploy script attempt an automatic container rollback to the previous image
+2. confirm `https://api.tasktrail.site/api/v1/health` is green again
 3. rerun the smoke check
 4. fix forward in Git after identifying the issue
+5. if the automatic rollback also fails, repair the VM manually using the previously running image
 
 ## Source Links
 
-- Render Blueprint reference: [https://render.com/docs/blueprint-spec](https://render.com/docs/blueprint-spec)
-- Render monorepo support: [https://render.com/docs/monorepo-support](https://render.com/docs/monorepo-support)
+- GitHub Actions: [https://docs.github.com/actions](https://docs.github.com/actions)
+- GitHub Container Registry: [https://docs.github.com/packages/working-with-a-github-packages-registry/working-with-the-container-registry](https://docs.github.com/packages/working-with-a-github-packages-registry/working-with-the-container-registry)

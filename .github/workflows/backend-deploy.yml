@@ -1,0 +1,112 @@
+name: Deploy TaskTrail Backend
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-deploy.yml'
+      - 'backend/scripts/deploy-oci-backend.sh'
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY_IMAGE: ghcr.io/blank-space-gsu/tasktrail-backend
+  CONTAINER_NAME: tasktrail-backend
+  ENV_FILE: /etc/tasktrail-backend.env
+  LOCAL_HEALTH_URL: http://127.0.0.1:4000/api/v1/health
+  EXTERNAL_HEALTH_URL: https://api.tasktrail.site/api/v1/health
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Run backend tests
+        working-directory: backend
+        run: npm test
+
+  build_and_push:
+    runs-on: ubuntu-latest
+    needs: test
+
+    outputs:
+      image_ref: ${{ steps.image_ref.outputs.image_ref }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set image reference
+        id: image_ref
+        run: echo "image_ref=${REGISTRY_IMAGE}:sha-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          push: true
+          tags: |
+            ${{ env.REGISTRY_IMAGE }}:sha-${{ github.sha }}
+            ${{ env.REGISTRY_IMAGE }}:latest
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build_and_push
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Prepare SSH key
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.OCI_SSH_PRIVATE_KEY }}" > ~/.ssh/id_tasktrail_oci
+          chmod 600 ~/.ssh/id_tasktrail_oci
+          ssh-keyscan -H "${{ secrets.OCI_VM_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Copy deploy script to OCI VM
+        run: |
+          scp -i ~/.ssh/id_tasktrail_oci \
+            backend/scripts/deploy-oci-backend.sh \
+            "${{ secrets.OCI_VM_USER }}@${{ secrets.OCI_VM_HOST }}:/tmp/tasktrail-deploy-oci-backend.sh"
+
+      - name: Deploy backend container on OCI VM
+        run: |
+          ssh -i ~/.ssh/id_tasktrail_oci \
+            "${{ secrets.OCI_VM_USER }}@${{ secrets.OCI_VM_HOST }}" \
+            "chmod +x /tmp/tasktrail-deploy-oci-backend.sh && \
+            IMAGE_REF='${{ needs.build_and_push.outputs.image_ref }}' \
+            GHCR_USERNAME='blank-space-gsu' \
+            GHCR_TOKEN='${{ secrets.GHCR_READ_TOKEN }}' \
+            CONTAINER_NAME='${CONTAINER_NAME}' \
+            ENV_FILE='${ENV_FILE}' \
+            LOCAL_HEALTH_URL='${LOCAL_HEALTH_URL}' \
+            bash /tmp/tasktrail-deploy-oci-backend.sh"
+
+      - name: Verify public health endpoint
+        run: curl --fail --silent --show-error "${EXTERNAL_HEALTH_URL}"
