@@ -23,6 +23,17 @@ if [[ ! -f "${ENV_FILE}" ]]; then
   exit 1
 fi
 
+deploy_env_file="${ENV_FILE}"
+temp_env_file=""
+
+cleanup() {
+  if [[ -n "${temp_env_file}" && -f "${temp_env_file}" ]]; then
+    sudo rm -f "${temp_env_file}" >/dev/null 2>&1 || rm -f "${temp_env_file}" >/dev/null 2>&1 || true
+  fi
+}
+
+trap cleanup EXIT
+
 health_check() {
   local url="$1"
   local attempts="${2:-30}"
@@ -44,16 +55,35 @@ container_exists() {
   docker container inspect "${CONTAINER_NAME}" >/dev/null 2>&1
 }
 
+prepare_env_file() {
+  if [[ -r "${ENV_FILE}" ]]; then
+    return 0
+  fi
+
+  if ! sudo -n true >/dev/null 2>&1; then
+    echo "Runtime env file is not readable and sudo is unavailable: ${ENV_FILE}" >&2
+    exit 1
+  fi
+
+  temp_env_file="$(mktemp /tmp/tasktrail-backend.env.XXXXXX)"
+  sudo cp "${ENV_FILE}" "${temp_env_file}"
+  sudo chown "$(id -u)":"$(id -g)" "${temp_env_file}"
+  chmod 600 "${temp_env_file}"
+  deploy_env_file="${temp_env_file}"
+}
+
 start_container() {
   local image="$1"
 
   docker run -d \
     --name "${CONTAINER_NAME}" \
     --restart unless-stopped \
-    --env-file "${ENV_FILE}" \
+    --env-file "${deploy_env_file}" \
     -p 4000:4000 \
     "${image}"
 }
+
+prepare_env_file
 
 echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin >/dev/null
 

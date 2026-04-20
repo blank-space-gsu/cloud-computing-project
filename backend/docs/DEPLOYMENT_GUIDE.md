@@ -85,6 +85,7 @@ Before enabling auto-deploy:
 
 1. Docker must already be installed and running on the dedicated TaskTrail OCI VM
 2. `/etc/tasktrail-backend.env` must already exist on that VM with the correct production values
+   - it may remain root-owned; the deploy script will make a temporary readable copy before restarting the container
 3. the backend must already be healthy on that host
 4. Caddy must already be reverse proxying:
    - `api.tasktrail.site -> 127.0.0.1:4000`
