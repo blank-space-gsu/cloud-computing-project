@@ -15,8 +15,8 @@ import {
 } from "../src/repositories/task.repository.js";
 import {
   createTeamAccessToken,
+  createTeamRecord,
   revokeActiveTeamAccessTokens,
-  upsertTeam,
   upsertTeamMember
 } from "../src/repositories/team.repository.js";
 import { findUserAccessProfileByEmail } from "../src/repositories/user.repository.js";
@@ -80,7 +80,7 @@ const generateJoinCode = (length = 8) =>
 
 const generateInviteToken = () => crypto.randomBytes(24).toString("base64url");
 
-const deleteExistingTeamByName = async (teamName, client) => {
+const deleteExistingTeamsByName = async (teamName, client) => {
   const existingTeamResult = await client.query(
     `
       select id
@@ -90,20 +90,44 @@ const deleteExistingTeamByName = async (teamName, client) => {
     [teamName]
   );
 
-  const existingTeamId = existingTeamResult.rows[0]?.id ?? null;
+  const existingTeamIds = existingTeamResult.rows.map((row) => row.id);
 
-  if (!existingTeamId) {
+  if (!existingTeamIds.length) {
     return;
   }
 
-  await client.query(`delete from public.notifications where team_id = $1`, [existingTeamId]);
-  await client.query(`delete from public.team_access_tokens where team_id = $1`, [existingTeamId]);
-  await client.query(`delete from public.team_membership_events where team_id = $1`, [existingTeamId]);
-  await client.query(`delete from public.goals where team_id = $1`, [existingTeamId]);
-  await client.query(`delete from public.hours_logged where team_id = $1`, [existingTeamId]);
-  await client.query(`delete from public.tasks where team_id = $1`, [existingTeamId]);
-  await client.query(`delete from public.recurring_task_rules where team_id = $1`, [existingTeamId]);
-  await client.query(`delete from public.teams where id = $1`, [existingTeamId]);
+  await client.query(
+    `delete from public.notifications where team_id = any($1::uuid[])`,
+    [existingTeamIds]
+  );
+  await client.query(
+    `delete from public.team_access_tokens where team_id = any($1::uuid[])`,
+    [existingTeamIds]
+  );
+  await client.query(
+    `delete from public.team_membership_events where team_id = any($1::uuid[])`,
+    [existingTeamIds]
+  );
+  await client.query(
+    `delete from public.goals where team_id = any($1::uuid[])`,
+    [existingTeamIds]
+  );
+  await client.query(
+    `delete from public.hours_logged where team_id = any($1::uuid[])`,
+    [existingTeamIds]
+  );
+  await client.query(
+    `delete from public.tasks where team_id = any($1::uuid[])`,
+    [existingTeamIds]
+  );
+  await client.query(
+    `delete from public.recurring_task_rules where team_id = any($1::uuid[])`,
+    [existingTeamIds]
+  );
+  await client.query(
+    `delete from public.teams where id = any($1::uuid[])`,
+    [existingTeamIds]
+  );
 };
 
 const findDemoUsersByKey = async () => {
@@ -245,15 +269,20 @@ export const seedDemoGroup = async () => {
     const manager = usersByKey.get(DEMO_LOGIN_ACCOUNTS.manager.key);
     const employeeOne = usersByKey.get(DEMO_LOGIN_ACCOUNTS.employee.key);
     const employeeTwo = usersByKey.get("employeeTwo");
-    await deleteExistingTeamByName(DEMO_TEAM.name, client);
+    await deleteExistingTeamsByName(DEMO_TEAM.name, client);
 
-    const team = await upsertTeam(
+    const teamId = await createTeamRecord(
       {
         name: DEMO_TEAM.name,
         description: DEMO_TEAM.description
       },
       { pool: client }
     );
+    const team = {
+      id: teamId,
+      name: DEMO_TEAM.name,
+      description: DEMO_TEAM.description
+    };
 
     for (const userKey of DEMO_PRIMARY_TEAM_MEMBER_KEYS) {
       const fixture = DEMO_USERS.find((user) => user.key === userKey);

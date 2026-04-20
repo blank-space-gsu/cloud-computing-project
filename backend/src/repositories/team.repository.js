@@ -108,32 +108,6 @@ const teamSummarySelect = `
   ) as manager_count
 `;
 
-export const upsertTeam = async (
-  team,
-  { pool = getPool() } = {}
-) => {
-  const result = await pool.query(
-    `
-      insert into public.teams (
-        name,
-        description
-      )
-      values ($1, $2)
-      on conflict (name) do update
-      set
-        description = excluded.description,
-        updated_at = timezone('utc', now())
-      returning
-        id,
-        name,
-        description
-    `,
-    [team.name, team.description ?? null]
-  );
-
-  return result.rows[0];
-};
-
 export const listAccessibleTeams = async (
   { requestingUserId, isAdmin = false },
   { pool = getPool() } = {}

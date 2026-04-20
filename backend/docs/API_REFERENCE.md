@@ -409,6 +409,8 @@ Bearer token required, role must be `manager` or `admin`.
 **Notes**
 
 - the creating manager/admin is automatically added to the team with `membershipRole = manager`
+- team names are labels, not unique identifiers
+- duplicate team names are allowed globally; use `team.id` as the canonical identifier
 
 ### `PATCH /api/v1/teams/:teamId`
 
@@ -417,6 +419,11 @@ Updates a team name and/or description for a manageable team.
 
 **Auth**
 Bearer token required, role must be `manager` or `admin`.
+
+**Notes**
+
+- team names remain non-empty but are not globally unique
+- renaming a team to a name already used by another team is allowed
 
 ### `GET /api/v1/teams/:teamId`
 

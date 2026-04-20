@@ -163,6 +163,7 @@ Recommended order:
 
 1. confirm migrations are aligned with `supabase migration list`
 2. apply any required migrations manually before merging code that depends on them
+   - this includes schema-only behavior changes such as lifting the old global uniqueness rule on `teams.name`
 3. push the backend change to `main`
 4. let GitHub Actions build, publish, and deploy the backend automatically
 5. verify `https://api.tasktrail.site/api/v1/health`

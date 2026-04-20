@@ -71,7 +71,7 @@ create table if not exists public.users (
 
 create table if not exists public.teams (
   id uuid primary key default extensions.gen_random_uuid(),
-  name text not null unique,
+  name text not null,
   description text,
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now()),

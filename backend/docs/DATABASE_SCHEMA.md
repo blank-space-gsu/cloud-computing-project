@@ -174,14 +174,11 @@ Stores the teams that managers and employees belong to.
 **Primary key**
 - `id`
 
-**Unique constraints**
-- `teams_name_key` on `name`
-
 **Check constraints**
 - `char_length(trim(name)) > 0`
 
 **Recommended indexes**
-- unique index on `name`
+- none required for MVP scope; team IDs remain the canonical identifier
 
 ### `public.team_members`
 
