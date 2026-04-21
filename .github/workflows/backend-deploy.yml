@@ -8,6 +8,7 @@ on:
       - 'backend/**'
       - '.github/workflows/backend-deploy.yml'
       - 'backend/scripts/deploy-oci-backend.sh'
+  workflow_dispatch:
 
 permissions:
   contents: read
