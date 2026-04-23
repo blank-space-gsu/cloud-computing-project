@@ -4,7 +4,7 @@
 
 **Team-based work assignment and execution platform for managers and employees.**
 
-[tasktrail.site](https://tasktrail.site) · [API health](https://api.tasktrail.site/api/v1/health) · [Mobile client]((https://github.com/Harry830/tasktrail-mobile))
+[tasktrail.site](https://tasktrail.site) · [API health](https://api.tasktrail.site/api/v1/health) · [Mobile client](https://github.com/Harry830/tasktrail-mobile)
 
 </div>
 
