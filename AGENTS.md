@@ -1,8 +1,16 @@
-# AGENTS.md
+# TaskTrail Contributor Guide
 
 ## Purpose
 
-This file is the contributor handoff guide for the TaskTrail repository. It explains how to work safely in this repo, where the important backend materials live, and which parts of the old broader product have now been frozen so contributors can stay aligned with the focused task-flow product.
+This is the contributor handoff guide for the TaskTrail repository. It explains how to work safely in the repo, where the most important docs live, and which product areas are active versus historical so contributors stay aligned with the current task-flow product.
+
+## Start Here
+
+If you're new to the repo, read these in order:
+
+1. [README.md](README.md) for the product overview, deployment shape, and repo layout
+2. [backend/docs/README.md](backend/docs/README.md) for the backend docs index
+3. [frontend/README.md](frontend/README.md) if you're touching the web client
 
 ## Repository Layout
 
@@ -14,8 +22,9 @@ cloud-computing-project/
   frontend/
 ```
 
-- `backend/` contains the Node.js + Express API.
-- `frontend/` contains the static SPA implementation used for the class demo.
+- `backend/` contains the Node.js + Express API, migrations, tests, scripts, and backend docs.
+- `frontend/` contains the static SPA used by the live web app.
+- The Flutter mobile client is intentionally separate and lives in the `tasktrail-mobile` repository.
 
 ## Current Product Status
 
@@ -67,23 +76,24 @@ Recommended next work:
 
 All backend documentation lives in `backend/docs/`.
 
-- [PROJECT_OVERVIEW.md](/Users/admin/Documents/GitHub/cloud-computing-project/backend/docs/PROJECT_OVERVIEW.md)
-- [BACKEND_ARCHITECTURE.md](/Users/admin/Documents/GitHub/cloud-computing-project/backend/docs/BACKEND_ARCHITECTURE.md)
-- [DEVELOPMENT_ROADMAP.md](/Users/admin/Documents/GitHub/cloud-computing-project/backend/docs/DEVELOPMENT_ROADMAP.md)
-- [MODULE_PROGRESS.md](/Users/admin/Documents/GitHub/cloud-computing-project/backend/docs/MODULE_PROGRESS.md)
-- [DATABASE_SCHEMA.md](/Users/admin/Documents/GitHub/cloud-computing-project/backend/docs/DATABASE_SCHEMA.md)
-- [TESTING_STRATEGY.md](/Users/admin/Documents/GitHub/cloud-computing-project/backend/docs/TESTING_STRATEGY.md)
-- [AUTH_AND_RBAC.md](/Users/admin/Documents/GitHub/cloud-computing-project/backend/docs/AUTH_AND_RBAC.md)
-- [API_REFERENCE.md](/Users/admin/Documents/GitHub/cloud-computing-project/backend/docs/API_REFERENCE.md)
-- [FRONTEND_INTEGRATION_GUIDE.md](/Users/admin/Documents/GitHub/cloud-computing-project/backend/docs/FRONTEND_INTEGRATION_GUIDE.md)
-- [ERROR_HANDLING_CONVENTIONS.md](/Users/admin/Documents/GitHub/cloud-computing-project/backend/docs/ERROR_HANDLING_CONVENTIONS.md)
-- [API_EXAMPLES.md](/Users/admin/Documents/GitHub/cloud-computing-project/backend/docs/API_EXAMPLES.md)
-- [ENVIRONMENT_VARIABLES.md](/Users/admin/Documents/GitHub/cloud-computing-project/backend/docs/ENVIRONMENT_VARIABLES.md)
-- [DEPLOYMENT_GUIDE.md](/Users/admin/Documents/GitHub/cloud-computing-project/backend/docs/DEPLOYMENT_GUIDE.md)
+- [README.md](backend/docs/README.md)
+- [PROJECT_OVERVIEW.md](backend/docs/PROJECT_OVERVIEW.md)
+- [BACKEND_ARCHITECTURE.md](backend/docs/BACKEND_ARCHITECTURE.md)
+- [DEVELOPMENT_ROADMAP.md](backend/docs/DEVELOPMENT_ROADMAP.md)
+- [MODULE_PROGRESS.md](backend/docs/MODULE_PROGRESS.md)
+- [DATABASE_SCHEMA.md](backend/docs/DATABASE_SCHEMA.md)
+- [TESTING_STRATEGY.md](backend/docs/TESTING_STRATEGY.md)
+- [AUTH_AND_RBAC.md](backend/docs/AUTH_AND_RBAC.md)
+- [API_REFERENCE.md](backend/docs/API_REFERENCE.md)
+- [FRONTEND_INTEGRATION_GUIDE.md](backend/docs/FRONTEND_INTEGRATION_GUIDE.md)
+- [ERROR_HANDLING_CONVENTIONS.md](backend/docs/ERROR_HANDLING_CONVENTIONS.md)
+- [API_EXAMPLES.md](backend/docs/API_EXAMPLES.md)
+- [ENVIRONMENT_VARIABLES.md](backend/docs/ENVIRONMENT_VARIABLES.md)
+- [DEPLOYMENT_GUIDE.md](backend/docs/DEPLOYMENT_GUIDE.md)
 
 ## Backend Commands
 
-Run from `/Users/admin/Documents/GitHub/cloud-computing-project/backend`.
+Run from `backend/`.
 
 Install dependencies:
 
@@ -138,6 +148,18 @@ Push pending migrations:
 ```bash
 supabase db push
 ```
+
+## Frontend Commands
+
+Run from `frontend/`.
+
+Serve the web client locally:
+
+```bash
+python3 -m http.server 5500
+```
+
+The frontend expects the backend at `http://localhost:4000/api/v1` in local development.
 
 ## Environment Rules
 
@@ -205,6 +227,7 @@ These demo accounts are expected to exist after running `npm run seed:demo-users
 
 ## Contributor Rules
 
+- Keep the root README and the relevant docs aligned with the real product shape.
 - Keep the backend modular: routes -> controllers -> services -> repositories.
 - Do not put SQL or business logic directly in controllers.
 - Keep docs aligned with implementation. Do not document endpoints that do not exist.

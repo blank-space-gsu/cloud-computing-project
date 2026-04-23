@@ -18,8 +18,8 @@ The database remains hosted in Supabase, and SMTP remains managed through Supaba
 
 TaskTrail’s backend is packaged as a single production container:
 
-- Dockerfile: [backend/Dockerfile](/Users/admin/Documents/GitHub/cloud-computing-project/backend/Dockerfile)
-- Docker ignore rules: [backend/.dockerignore](/Users/admin/Documents/GitHub/cloud-computing-project/backend/.dockerignore)
+- Dockerfile: [backend/Dockerfile](../Dockerfile)
+- Docker ignore rules: [backend/.dockerignore](../.dockerignore)
 
 Runtime model:
 
@@ -41,9 +41,9 @@ Notes:
 This repo now uses a backend-only deployment workflow:
 
 - workflow file: `.github/workflows/backend-deploy.yml`
-- remote deploy script: [backend/scripts/deploy-oci-backend.sh](/Users/admin/Documents/GitHub/cloud-computing-project/backend/scripts/deploy-oci-backend.sh)
+- remote deploy script: [backend/scripts/deploy-oci-backend.sh](../scripts/deploy-oci-backend.sh)
 - health check path: `/api/v1/health`
-- smoke check script: [backend/scripts/smoke-test.js](/Users/admin/Documents/GitHub/cloud-computing-project/backend/scripts/smoke-test.js)
+- smoke check script: [backend/scripts/smoke-test.js](../scripts/smoke-test.js)
 
 The workflow runs on pushes to `main` when backend deployment files change:
 
@@ -171,7 +171,7 @@ Recommended order:
 
 ## Post-Deploy Smoke Check
 
-From `/Users/admin/Documents/GitHub/cloud-computing-project/backend`:
+From the `backend/` directory:
 
 ```bash
 SMOKE_TEST_BASE_URL=https://api.tasktrail.site \

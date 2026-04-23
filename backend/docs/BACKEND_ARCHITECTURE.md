@@ -13,7 +13,7 @@
 | Authentication | Supabase Auth through backend endpoints | Keeps frontend integration simple while using a strong managed auth provider |
 | Validation | Zod | Clear request validation rules with readable error structures |
 | Testing | Vitest + Supertest | Fast setup for API tests without extra complexity |
-| Deployment | Render | Easy Node service deployment, monorepo support, and simple environment variable management for student teams |
+| Deployment | Oracle Cloud VM + Docker + GHCR + GitHub Actions | Keeps the live API on dedicated infrastructure while staying understandable for a student team; legacy Render config is still kept in-tree for reference |
 
 ## Architecture Summary
 
@@ -54,7 +54,8 @@ Phase 0, Phase 1, Phase 2, Phase 3, Phase 4, Phase 5, Phase 6, Phase 7, Phase 8,
 - goals routes are implemented in `src/routes/goals.routes.js`
 - goal scope, quota progress, and summary logic are implemented in `src/services/goal.service.js` and `src/repositories/goal.repository.js`
 - reusable smoke verification is implemented in `scripts/smoke-test.js`
-- a Render deployment Blueprint is included at the repo root in `render.yaml`
+- the live deployment path uses GitHub Actions, GHCR, and an Oracle Cloud VM
+- a legacy Render deployment blueprint is still included at the repo root in `render.yaml`
 
 ## Request Flow
 
@@ -117,13 +118,14 @@ Optional post-roadmap enhancements:
 
 ### Deployment Choice
 
-Render is the default deployment target because it is simple for a student team:
+The current production deployment path is:
 
-- fast Node service setup
-- root-level Blueprint support for monorepos
-- built-in environment variable management
-- straightforward deploy logs
-- enough capability for a course project without extra infrastructure overhead
+- Dockerized backend built from `backend/Dockerfile`
+- GitHub Actions workflow that tests, builds, and publishes to GHCR
+- SSH-based rollout to a dedicated Oracle Cloud VM
+- Caddy reverse proxy serving `https://api.tasktrail.site`
+
+This keeps the live API on infrastructure the team controls while staying simple enough to understand and operate during a class project. A legacy `render.yaml` blueprint is still kept in the repo as a reproducible alternative deployment target from earlier iterations of the project.
 
 ## Backend Folder Structure
 
@@ -228,7 +230,8 @@ The current backend foundation has been verified with:
 - successful Supabase migration push for the goals schema
 - live verification of user-scoped goals, team-scoped goals, quota progress, manager-only writes, and cleanup
 - deployment-oriented smoke script verification
-- root-level Render Blueprint committed for repeatable deployment setup
+- health-gated OCI deployment workflow verified and documented
+- root-level `render.yaml` retained as a legacy alternative deployment blueprint
 
 ## Current Frontend-Facing Notes
 

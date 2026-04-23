@@ -18,7 +18,7 @@ Last updated: April 19, 2026
 | Phase 6 - Hours logging | Complete | `npm test` passed, `supabase db push` succeeded, and live hours logging verification succeeded on March 26, 2026 | Frontend can now build hours entry forms and team-scoped hours summaries | Hours create/list endpoints, summaries, and schema are in place |
 | Phase 7 - Productivity metrics | Complete | `npm test` passed and live productivity metrics verification succeeded on March 26, 2026 | Frontend can now build richer productivity rollups, trends, and team comparison charts | Weekly, monthly, and yearly rollups plus chart-ready trend data are in place |
 | Phase 8 - Goals and quotas | Complete | `npm test` passed, `supabase db push` succeeded, and live goals verification succeeded on March 26, 2026 | Frontend can now build quota progress cards, goal lists, and manager goal-management forms | Generic goals schema and sales quota support are in place |
-| Phase 9 - Hardening + deployment | Complete | `npm test` passed, smoke verification succeeded, and deployment artifacts were added on March 26, 2026 | Frontend can now receive a deployment-ready backend handoff with a stable Render setup path | Smoke script, deployment guide, and Render Blueprint are in place |
+| Phase 9 - Hardening + deployment | Complete | `npm test` passed, smoke verification succeeded, and deployment artifacts were added on March 26, 2026 | Frontend can now receive a deployment-ready backend handoff with a stable OCI deployment path and a documented fallback blueprint | Smoke script, deployment guide, OCI rollout workflow, and legacy Render blueprint are in place |
 | Phase 10 - Frontend support extensions | Complete | `npm test` passed with 192/192 tests on April 19, 2026 | Frontend can now save profile edits, create employees and teams, and manage memberships with richer roster cards | Avatar support is URL-based, and notifications have been retired from the current live product surface |
 
 ## Current Stable Backend Contracts
@@ -121,7 +121,8 @@ Phases 0, 1, 2, 3, 4, 5, 6, 7, 8, and 9 are complete because:
 - employee goal visibility is limited to team goals and user goals assigned to that employee
 - manager goal writes are limited to teams they manage
 - goal responses include computed progress percentage, remaining value, excess value, and target-met state
-- `render.yaml` exists at the repo root for repeatable Render deployment from the monorepo
+- the OCI deployment workflow and smoke-check path are documented for the live backend
+- `render.yaml` remains at the repo root as a legacy alternative deployment blueprint
 - `backend/scripts/smoke-test.js` exists for local and deployed smoke verification
 - `TESTING_STRATEGY.md` and `DEPLOYMENT_GUIDE.md` are now part of the handoff docs
 - `users` profile data now includes `date_of_birth`, `address`, and URL-based `avatar_url`

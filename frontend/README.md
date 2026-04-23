@@ -1,77 +1,77 @@
-# Frontend README
+# TaskTrail Web
 
-## Overview
+Static, single-page web client for TaskTrail. No framework, no build step — just HTML, CSS, and JavaScript with a hash router talking to the backend at `/api/v1`.
 
-This frontend is a plain HTML, CSS, and JavaScript single-page app for TaskTrail. It uses hash-based routing and connects to the backend API under `/api/v1`.
+Live at **[tasktrail.site](https://tasktrail.site)** (deployed on Vercel).
 
-The live UI is now a focused team task-flow product. It uses the validated backend API for authentication, team join access, tasks, Worker Tracker, calendar, and profile saving. Backend logic remains isolated in `/backend`.
+This repo only contains the web client. The Flutter mobile client lives in the separate **[tasktrail-mobile](https://github.com/blank-space-gsu/tasktrail-mobile)** repository and talks to the same backend.
 
-## What Was Built
+## What's here
 
-- Public landing page before login
-- Role-based sign-in flow
-- Shared app shell with sidebar, header, modals, toasts, loading states, and empty states
-- Manager Dashboard, Worker Tracker, Tasks, Teams, and Profile
-- Employee Join Team, Tasks, Calendar, Teams, and Profile
-- Team join access management for managers
-- Backend-backed self-profile editing on the profile page
-- Responsive TaskTrail styling across the app
+- Public landing page before sign-in
+- Role-aware login that routes managers and employees to different shells
+- Shared app shell: sidebar, header, modals, toasts, loading and empty states
+- **Manager** surfaces: Dashboard, Worker Tracker, Tasks, Teams, Profile
+- **Employee** surfaces: My Tasks, Calendar, Teams, Join Team, Profile
+- Backend-backed self-profile editing
+- Manager join-access controls (short codes and invite links)
+- Employee join, leave, and rejoin flow
+- Responsive layout for desktop, tablet, and phone widths
 
-Retired from the live app flow:
-
-- Goals page
-- Productivity page
-- Employee dashboard route
-
-## Frontend Structure
+## Structure
 
 ```text
 frontend/
-  index.html
-  css/
-    styles.css
-  js/
-    api.js
-    app.js
-    auth.js
-    router.js
-    components/
-    pages/
-    utils/
+├── index.html
+├── favicon.svg
+├── css/
+│   └── styles.css
+└── js/
+    ├── api.js          # fetch wrapper and endpoint helpers
+    ├── auth.js         # session + role guards
+    ├── router.js       # hash-based SPA router
+    ├── app.js          # bootstrap
+    ├── components/     # shared UI building blocks
+    ├── pages/          # per-route views
+    └── utils/
 ```
 
-## Main Pages
+## Routes
 
-- `#/` public landing page
-- `#/login` sign-in screen
-- `#/dashboard` manager attention view
-- `#/worker-tracker` manager drilldown view
-- `#/tasks`
-- `#/calendar` employee-only
-- `#/teams`
-- `#/join` employee onboarding / join access
-- `#/profile`
+| Path | Surface |
+| --- | --- |
+| `#/` | Public landing |
+| `#/login` | Sign-in |
+| `#/dashboard` | Manager attention view |
+| `#/worker-tracker` | Manager drill-down |
+| `#/tasks` | Manager + employee tasks |
+| `#/calendar` | Employee calendar |
+| `#/teams` | Team management / roster |
+| `#/join` | Employee onboarding / join access |
+| `#/profile` | Self profile |
 
-## Local Run
+## Run locally
 
-Start the backend first:
+Start the backend first (see [../backend](../backend)):
 
 ```bash
-cd backend
+cd ../backend
 npm install
 npm run dev
 ```
 
-From the frontend folder, start a static server:
+Then serve the frontend statically:
 
 ```bash
 cd frontend
 python3 -m http.server 5500
 ```
 
-Open `http://localhost:5500`.
+Open <http://localhost:5500>.
 
-## Demo Accounts
+## Demo accounts
+
+After `npm run seed:demo-group` on the backend, these users exist:
 
 - `olivia.hart@tasktrail.local`
 - `ethan.reyes@tasktrail.local`
@@ -81,46 +81,17 @@ Open `http://localhost:5500`.
 
 Use the password stored in `backend/.env` as `DEMO_USER_PASSWORD`.
 
-## Important Frontend Notes
+## Notes
 
-- Managers land on the attention-first dashboard and then move naturally into Worker Tracker, Tasks, or Teams.
+- Managers land on the attention-first dashboard and flow naturally into Worker Tracker, Tasks, or Teams.
 - Employees land on Join Team if they have no active memberships, otherwise on Tasks.
 - Self-profile edits save through `PATCH /api/v1/users/me` for `firstName`, `lastName`, `jobTitle`, `dateOfBirth`, and `address`.
-- Manager team creation, team editing, team membership add/remove, join-access regeneration, and recurring-task creation are backed by the real API.
-- Profile photo management and employee creation remain placeholder UI actions in the current frontend. Backend support exists for URL-based avatar updates and employee creation, but those specific controls are not wired yet; binary profile-photo upload is not implemented.
-- Legacy backend endpoints for goals, productivity, and hours still exist, but they are no longer part of the live frontend product path.
+- Manager team create/edit, membership changes, join-access regeneration, and recurring-task creation are all wired to the real API.
+- Profile photo management and some manager-side employee creation controls remain presentation-only. The backend already supports `POST /api/v1/users` and URL-based avatar updates via `PATCH /api/v1/users/:userId/avatar`; those controls just need to be wired into the UI.
+- Legacy backend endpoints for goals, productivity, and hours still exist but are no longer part of the live product flow.
 
-## Backend Endpoints Used
+## Backend surface used
 
-- `POST /api/v1/auth/login`
-- `GET /api/v1/auth/me`
-- `GET /api/v1/users/me`
-- `PATCH /api/v1/users/me`
-- `GET /api/v1/teams`
-- `POST /api/v1/teams`
-- `GET /api/v1/teams/:teamId`
-- `PATCH /api/v1/teams/:teamId`
-- `GET /api/v1/teams/:teamId/members`
-- `POST /api/v1/teams/:teamId/members`
-- `DELETE /api/v1/teams/:teamId/members/:userId`
-- `GET /api/v1/teams/:teamId/join-access`
-- `POST /api/v1/teams/:teamId/join-access/regenerate`
-- `POST /api/v1/team-join`
-- `POST /api/v1/teams/:teamId/members/me/leave`
-- `GET /api/v1/tasks`
-- `POST /api/v1/tasks`
-- `GET /api/v1/tasks/:taskId`
-- `PATCH /api/v1/tasks/:taskId`
-- `DELETE /api/v1/tasks/:taskId`
-- `POST /api/v1/task-assignments`
-- `GET /api/v1/dashboards/manager`
-- `GET /api/v1/worker-tracker`
-- `POST /api/v1/recurring-task-rules`
+The web client relies on the stable `/api/v1` surface — see the [API reference](../backend/docs/API_REFERENCE.md) and [frontend integration guide](../backend/docs/FRONTEND_INTEGRATION_GUIDE.md) for full details.
 
-## Backend Handoff List
-
-These are the remaining frontend/backend handoff items if the team wants to polish beyond the validated demo scope:
-
-- Wire Add Employee from the manager UI to the existing `POST /api/v1/users` endpoint
-- Wire URL-based employee avatar updates from the manager side to `PATCH /api/v1/users/:userId/avatar`, or add binary upload support later if required
-- Expand team directory contact data where roster responses do not include all desired fields
+For repo-wide context, start at the [root README](../README.md).

@@ -60,7 +60,7 @@ Pass criteria:
 Used for:
 
 - local manual verification after major phases
-- post-deploy verification on Render
+- post-deploy verification against the live OCI-hosted API
 - quick sanity checks against the linked Supabase project
 
 Why:
@@ -99,7 +99,7 @@ Pass criteria:
 
 ## Commands
 
-Run from `/Users/admin/Documents/GitHub/cloud-computing-project/backend`.
+Run from the `backend/` directory.
 
 Automated regression:
 
@@ -134,7 +134,7 @@ npm run audit:local
 Smoke check against another base URL:
 
 ```bash
-SMOKE_TEST_BASE_URL=https://your-api.onrender.com \
+SMOKE_TEST_BASE_URL=https://api.tasktrail.site \
 SMOKE_TEST_EMAIL=manager.demo@cloudcomputing.local \
 SMOKE_TEST_PASSWORD=your-demo-password \
 SMOKE_TEST_EXPECT_MANAGER_ACCESS=true \
