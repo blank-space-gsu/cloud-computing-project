@@ -6,6 +6,15 @@
 .test-write
 TASKTRAIL_MASTER_CONTEXT.md
 
+# Local 6-page report export and office temp files
+TaskTrail_6_Page_Report.*
+~$*.docx
+~$*.pptx
+~$*.xlsx
+
+# Local helper scripts
+push-tasktrail.sh
+
 # Unrelated experimental work kept locally but out of this repo
 htmltest/
 

@@ -66,6 +66,45 @@ None.
 }
 ```
 
+## Keepalive
+
+### `GET /api/v1/keepalive`
+
+**Purpose**
+Runs a tiny DB-backed check for best-effort live-stack keepalive monitoring. This endpoint is public, lightweight, and separate from `/api/v1/health`.
+
+**Auth**
+No authentication required.
+
+**Request body**
+None.
+
+**Success response**
+
+```json
+{
+  "success": true,
+  "message": "Keepalive check completed.",
+  "data": {
+    "status": "ok",
+    "api": "alive",
+    "database": {
+      "status": "connected",
+      "check": "select_1",
+      "checkedAt": "2026-04-24T16:00:00.000Z"
+    }
+  },
+  "meta": {
+    "timestamp": "2026-04-24T16:00:00.000Z",
+    "path": "/api/v1/keepalive",
+    "method": "GET"
+  }
+}
+```
+
+**Failure response**
+Returns a standard error envelope with HTTP `503` if the database is not configured or the tiny DB check cannot complete.
+
 ## Auth
 
 ### `POST /api/v1/auth/signup`

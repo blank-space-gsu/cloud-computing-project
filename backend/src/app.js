@@ -9,6 +9,7 @@ import dashboardsRouter from "./routes/dashboards.routes.js";
 import goalsRouter from "./routes/goals.routes.js";
 import healthRouter from "./routes/health.routes.js";
 import hoursLoggedRouter from "./routes/hoursLogged.routes.js";
+import keepaliveRouter from "./routes/keepalive.routes.js";
 import productivityRouter from "./routes/productivity.routes.js";
 import recurringTaskRulesRouter from "./routes/recurringTaskRules.routes.js";
 import taskAssignmentsRouter from "./routes/taskAssignments.routes.js";
@@ -38,6 +39,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use(`${env.API_PREFIX}/health`, healthRouter);
+app.use(`${env.API_PREFIX}/keepalive`, keepaliveRouter);
 app.use(`${env.API_PREFIX}/auth`, authRouter);
 app.use(`${env.API_PREFIX}/users`, usersRouter);
 app.use(`${env.API_PREFIX}/teams`, teamsRouter);

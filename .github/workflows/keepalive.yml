@@ -1,0 +1,23 @@
+# Best-effort keepalive for the live TaskTrail stack.
+# This pings the backend so it performs a tiny DB-backed check; it does not
+# guarantee provider availability or override any hosting/provider policy.
+
+name: TaskTrail Keepalive
+
+on:
+  schedule:
+    - cron: "0 */12 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Ping keepalive endpoint
+        run: |
+          curl --fail --silent --show-error --max-time 20 --retry 2 --retry-delay 5 \
+            https://api.tasktrail.site/api/v1/keepalive
