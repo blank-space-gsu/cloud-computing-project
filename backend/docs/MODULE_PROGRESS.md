@@ -133,11 +133,4 @@ Phases 0, 1, 2, 3, 4, 5, 6, 7, 8, and 9 are complete because:
 - `/teams/:teamId/members` now supports persisted membership add/remove operations
 - the current regression suite passed with `192/192` tests on April 19, 2026
 
-## Next Recommended Phase
 
-The planned roadmap is complete. Recommended optional next work:
-
-- task comments and activity history
-- richer scheduled/email reminder delivery
-- attachments
-- export-ready reporting
